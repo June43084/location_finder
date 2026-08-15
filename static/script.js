@@ -1,9 +1,9 @@
-// frontend/static/script.js
-
 const BACKEND_BASE_URL = '';
 let currentCoords = null;
 let currentAddress = null;
 let allPlacesData = {}; // Stores all fetched places
+window.placeUrlMap = {}; // 用來對應地點名稱 → 連結
+
 
 document.addEventListener('DOMContentLoaded', () => {
     const updateWheelBtn = document.getElementById('updateWheelBtn');
@@ -158,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function reverseGeocode(lat, lng) {
         try {
-            const response = await fetch(`${BACKEND_BASE_URL}/reverse_geocode?lat=${lat}&lng=${lng}`);
+            const response = await fetch(`${BACKEND_BASE_URL}/places/reverse_geocode?lat=${lat}&lng=${lng}`);
             const data = await response.json();
             if (data.address) {
                 currentAddress = data.address;
@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         displayMessage('正在轉換地址...', 'info');
         try {
-            const response = await fetch(`${BACKEND_BASE_URL}/geocode_address`, {
+            const response = await fetch(`${BACKEND_BASE_URL}/places/geocode_address`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -244,6 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function searchNearbyPlaces() {
         if (!currentCoords) {
             displayMessage('請先獲取或輸入您的位置。', 'warning');
+            placeIdMap[place.name] = place.map_url || place.url || ''; // 優先使用 Google map_url，其次 OSM url
             return;
         }
 
@@ -255,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
         allPlacesData = {}; // Clear previous data
 
         try {
-            const response = await fetch(`${BACKEND_BASE_URL}/nearby_search`, {
+            const response = await fetch(`${BACKEND_BASE_URL}/places/nearby_search`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -274,6 +275,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 data.places.forEach(place => {
                     const placeId = place.id || `osm-${place.osm_id}`;
                     allPlacesData[placeId] = place;
+                    placeUrlMap[place.name] = place.map_url || place.url || ''; // 儲存連結
+
 
                     const placeItem = document.createElement('div');
                     placeItem.className = 'place-item';
@@ -281,9 +284,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="checkbox" id="${placeId}" checked>
                         <label for="${placeId}">
                             <h3>${place.name}</h3>
+                            <img src="${place.photo_url}" class="place-img" alt="圖片">
                             <p>${place.formatted_address || place.vicinity || '無地址資訊'}</p>
-                            ${place.rating ? `<p>評分: ${place.rating} (${place.user_ratings_total} 則評論)</p>` : ''}
-                            ${place.distance ? `<p>距離: ${place.distance.toFixed(2)} 公尺</p>` : ''}
+                            ${place.map_url ? `<p><a href="${place.map_url}" target="_blank">📍 Google 地圖</a></p>` : ''}
+                            ${place.url ? `<p><a href="${place.url}" target="_blank">📍 OSM 地圖</a></p>` : ''}
+                            ${place.food_search_url ? `<p><a href="https://www.google.com/search?q=${encodeURIComponent(place.name)}" target="_blank">🔍 從Google 搜尋這家店</a></p>` : ''}
                         </label>
                     `;
                     placesListDiv.appendChild(placeItem);
