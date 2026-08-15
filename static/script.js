@@ -158,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function reverseGeocode(lat, lng) {
         try {
-            const response = await fetch(`${BACKEND_BASE_URL}/places/reverse_geocode?lat=${lat}&lng=${lng}`);
+            const response = await fetch(`${BACKEND_BASE_URL}/reverse_geocode?lat=${lat}&lng=${lng}`);
             const data = await response.json();
             if (data.address) {
                 currentAddress = data.address;
@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         displayMessage('正在轉換地址...', 'info');
         try {
-            const response = await fetch(`${BACKEND_BASE_URL}/places/geocode_address`, {
+            const response = await fetch(`${BACKEND_BASE_URL}/geocode_address`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -244,7 +244,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function searchNearbyPlaces() {
         if (!currentCoords) {
             displayMessage('請先獲取或輸入您的位置。', 'warning');
-            placeIdMap[place.name] = place.map_url || place.url || ''; // 優先使用 Google map_url，其次 OSM url
             return;
         }
 
@@ -256,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
         allPlacesData = {}; // Clear previous data
 
         try {
-            const response = await fetch(`${BACKEND_BASE_URL}/places/nearby_search`, {
+            const response = await fetch(`${BACKEND_BASE_URL}/nearby_search`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
