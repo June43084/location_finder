@@ -2,10 +2,10 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>吃喝玩樂搜尋器</title>
   <link rel="stylesheet" href="/static/style.css" />
-  <link rel="icon" href="static/favicon.ico" type="image/x-icon" />
+  <link rel="icon" href="/static/favicon.ico" type="image/x-icon" />
 </head>
 <body>
   <div class="container">
@@ -17,9 +17,14 @@
       <h2>我的位置</h2>
       <p id="currentLocationDisplay">正在獲取您的位置...</p>
       <button id="getLocationBtn" class="btn">重新獲取我的位置</button>
+
       <div id="manualLocationInput" class="hidden-section">
         <p>或輸入您的地址：</p>
-        <input type="text" id="addressInput" placeholder="例如：台北市信義區市府路1號" />
+        <input
+          type="text"
+          id="addressInput"
+          placeholder="例如：台北市信義區市府路1號"
+        />
         <button id="geocodeAddressBtn" class="btn">轉換地址</button>
       </div>
     </section>
@@ -27,6 +32,7 @@
     <section id="placeTypeSelection" class="hidden-section">
       <h2>搜尋附近地點</h2>
       <p>請選擇您想搜尋的「吃喝玩樂」類型：</p>
+
       <select id="searchType">
         <optgroup label="🍽️ 吃喝">
           <option value="restaurant">餐廳</option>
@@ -36,6 +42,7 @@
           <option value="meal_delivery">餐點外送</option>
           <option value="meal_takeaway">餐點外帶</option>
         </optgroup>
+
         <optgroup label="🎡 玩樂">
           <option value="amusement_park">遊樂園</option>
           <option value="park">公園</option>
@@ -54,7 +61,14 @@
 
       <div class="range-container">
         <label for="searchRadius">搜尋範圍:</label>
-        <input type="range" id="searchRadius" min="100" max="10000" value="5000" step="100" />
+        <input
+          type="range"
+          id="searchRadius"
+          min="100"
+          max="10000"
+          value="5000"
+          step="100"
+        />
         <span id="radiusValue">5000</span> 公尺
       </div>
 
@@ -62,58 +76,96 @@
     </section>
 
     <section id="resultsContainer">
-      <h2>搜尋結果(下方有轉盤抽選功能)</h2>
+      <h2>搜尋結果（下方有轉盤抽選功能）</h2>
+      <h4>若該店無圖片，本頁將以風景照替代</h4>
+
       <div id="placesActions" class="hidden-section">
         <button id="selectAllBtn" class="btn-small">全選</button>
         <button id="deselectAllBtn" class="btn-small">全不選</button>
-        <button id="updateWheelBtn" class="btn-small">🎯根據勾選更新轉盤</button>
-
+        <button id="updateWheelBtn" class="btn-small">
+          🎯 根據勾選更新轉盤
+        </button>
       </div>
+
       <div id="placesList"></div>
     </section>
 
     <section id="wheelSection" style="display:none;">
       <h2>🎡 轉盤抽選</h2>
+
       <div class="wheel-wrapper">
         <div class="pointer"></div>
         <canvas id="wheelCanvas" width="400" height="400"></canvas>
       </div>
+
       <button id="spinBtn" class="btn">轉動！</button>
       <p id="result">請按下「轉動！」開始遊戲</p>
     </section>
   </div>
 
-  <!-- 主邏輯與轉盤功能整合 -->
   <script src="/static/script.js"></script>
+
   <script>
-    // 轉盤功能整合（等待搜尋完成後載入）
     window.setupWheelWithPlaces = function (placeNames) {
       const canvas = document.getElementById('wheelCanvas');
-      const ctx = canvas.getContext('2d');
       const spinBtn = document.getElementById('spinBtn');
       const result = document.getElementById('result');
       const wheelSection = document.getElementById('wheelSection');
 
-      const prizes = placeNames;
+      if (!canvas || !spinBtn || !result || !wheelSection) {
+        return;
+      }
+
+      const prizes = Array.isArray(placeNames)
+        ? placeNames.filter(Boolean)
+        : [];
+
+      if (prizes.length === 0) {
+        wheelSection.style.display = 'none';
+        result.textContent = '請先勾選至少一個地點';
+        return;
+      }
+
+      wheelSection.style.display = 'block';
+
+      const ctx = canvas.getContext('2d');
       const totalSegments = prizes.length;
-      const baseColors = ['#f94144','#f3722c','#f8961e','#43aa8b','#577590','#277da1'];
-      const colors = Array.from({ length: totalSegments }, (_, i) => baseColors[i % baseColors.length]);
-      const anglePerSegment = 2 * Math.PI / totalSegments;
+      const baseColors = [
+        '#f94144',
+        '#f3722c',
+        '#f8961e',
+        '#43aa8b',
+        '#577590',
+        '#277da1'
+      ];
+      const colors = Array.from(
+        { length: totalSegments },
+        (_, i) => baseColors[i % baseColors.length]
+      );
+      const anglePerSegment = (2 * Math.PI) / totalSegments;
 
       let currentAngle = 0;
       let spinning = false;
 
-      function drawWheel() {
+      function drawWheel(rotation = 0) {
         ctx.clearRect(0, 0, 400, 400);
+
+        ctx.save();
+        ctx.translate(200, 200);
+        ctx.rotate(rotation);
+        ctx.translate(-200, -200);
+
         for (let i = 0; i < totalSegments; i++) {
           const startAngle = i * anglePerSegment;
           const endAngle = startAngle + anglePerSegment;
+
           ctx.beginPath();
           ctx.moveTo(200, 200);
           ctx.arc(200, 200, 180, startAngle, endAngle);
           ctx.fillStyle = colors[i];
           ctx.fill();
           ctx.stroke();
+
           ctx.save();
           ctx.translate(200, 200);
           ctx.rotate(startAngle + anglePerSegment / 2);
@@ -123,14 +175,42 @@
           ctx.fillText(prizes[i].slice(0, 10), 160, 10);
           ctx.restore();
         }
+
+        ctx.restore();
+      }
+
+      function showResult(placeName) {
+        const placeUrl = window.placeUrlMap?.[placeName];
+
+        result.textContent = '🎉 抽到的是：';
+
+        if (placeUrl) {
+          const link = document.createElement('a');
+          link.href = placeUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = placeName;
+
+          result.appendChild(link);
+          result.append('！');
+        } else {
+          result.append(`${placeName}！`);
+        }
       }
 
       function spinWheel() {
-        if (spinning || prizes.length === 0) return;
+        if (spinning || prizes.length === 0) {
+          return;
+        }
+
         spinning = true;
-        result.textContent = "轉動中...";
+        result.textContent = '轉動中...';
         spinBtn.disabled = true;
-        const finalAngle = currentAngle + (5 + Math.random() * 3) * 2 * Math.PI;
+
+        const startAngle = currentAngle;
+        const spinAmount =
+          (5 + Math.random() * 3) * 2 * Math.PI;
+        const finalAngle = startAngle + spinAmount;
         const duration = 5000;
         const startTime = performance.now();
 
@@ -138,32 +218,43 @@
           const elapsed = time - startTime;
           const progress = Math.min(elapsed / duration, 1);
           const ease = 1 - Math.pow(1 - progress, 3);
-          currentAngle = finalAngle * ease;
-          ctx.save();
-          ctx.translate(200, 200);
-          ctx.rotate(currentAngle);
-          ctx.translate(-200, -200);
-          drawWheel();
-          ctx.restore();
+
+          currentAngle =
+            startAngle + (finalAngle - startAngle) * ease;
+
+          drawWheel(currentAngle);
 
           if (progress < 1) {
             requestAnimationFrame(animate);
-          } else {
-            const normalized = currentAngle % (2 * Math.PI);
-            const pointerAngle = (3 * Math.PI / 2 - normalized + 2 * Math.PI) % (2 * Math.PI);
-            const index = Math.floor(pointerAngle / anglePerSegment) % totalSegments;
-            result.textContent = `🎉 抽到的是：${prizes[index]}！`;
-            spinning = false;
-            spinBtn.disabled = false;
+            return;
           }
+
+          const normalized =
+            currentAngle % (2 * Math.PI);
+
+          const pointerAngle =
+            (
+              3 * Math.PI / 2 -
+              normalized +
+              2 * Math.PI
+            ) % (2 * Math.PI);
+
+          const index =
+            Math.floor(pointerAngle / anglePerSegment) %
+            totalSegments;
+
+          showResult(prizes[index]);
+
+          spinning = false;
+          spinBtn.disabled = false;
         }
 
         requestAnimationFrame(animate);
       }
 
       spinBtn.onclick = spinWheel;
+      result.textContent = '請按下「轉動！」開始遊戲';
       drawWheel();
-      wheelSection.style.display = 'block';
     };
   </script>
 </body>
