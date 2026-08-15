@@ -113,7 +113,7 @@ def nearby_search():
     google_headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.id,places.addressComponents,places.primaryType,places.types,places.regularOpeningHours.weekdayDescriptions,places.websiteUri,places.internationalPhoneNumber,places.priceLevel,places.editorialSummary,places.takeout,places.dineIn,places.delivery,places.servesBreakfast,places.servesLunch,places.servesDinner"
+        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.id,places.addressComponents,places.primaryType,places.types,places.regularOpeningHours.weekdayDescriptions,places.websiteUri,places.internationalPhoneNumber,places.priceLevel,places.editorialSummary,places.takeout,places.dineIn,places.delivery,places.servesBreakfast,places.servesLunch,places.servesDinner,places.photos"
     }
     google_payload = {
         "includedTypes": [place_type],
@@ -133,18 +133,49 @@ def nearby_search():
         
         if google_data.get('places'):
             for p in google_data['places']:
+        
+                photos = p.get("photos", [])
+                photo_url = None
+        
+                if photos:
+                    photo_ref = photos[0].get("name")
+                    if photo_ref:
+                        photo_url = (
+                            f"https://places.googleapis.com/v1/"
+                            f"{photo_ref}/media"
+                            f"?key={GOOGLE_API_KEY}&maxWidthPx=400"
+                        )
+        
                 place_info = {
                     "id": p.get('id'),
                     "name": p['displayName']['text'],
                     "formatted_address": p.get('formattedAddress'),
-                    "vicinity": p.get('formattedAddress'), # For consistency with OSM
+                    "vicinity": p.get('formattedAddress'),
                     "latitude": p['location']['latitude'],
                     "longitude": p['location']['longitude'],
                     "rating": p.get('rating'),
                     "user_ratings_total": p.get('userRatingCount'),
                     "source": "Google",
-                    "distance": calculate_distance(lat, lng, p['location']['latitude'], p['location']['longitude'])
+                    "distance": calculate_distance(
+                        lat,
+                        lng,
+                        p['location']['latitude'],
+                        p['location']['longitude']
+                    ),
+        
+                    "photo_url": photo_url or "/static/placeholder.jpg",
+        
+                    "map_url": (
+                        f"https://www.google.com/maps/place/"
+                        f"?q=place_id:{p['id']}"
+                    ),
+        
+                    "food_search_url": (
+                        f"https://www.google.com/search?q="
+                        f"{p['displayName']['text']} 美食"
+                    )
                 }
+        
                 google_places.append(place_info)
     except requests.exceptions.RequestException as e:
         logging.error(f"Google Places API 搜尋失敗: {e}")
@@ -219,6 +250,9 @@ def nearby_search():
                         "user_ratings_total": None,
                         "source": "OSM",
                         "distance": calculate_distance(lat, lng, element['lat'], element['lon'])
+                        "photo_url": "/static/placeholder.jpg",
+                        "url": f"https://www.openstreetmap.org/?mlat={element['lat']}&mlon={element['lon']}&zoom=18",
+                        "food_search_url": f"https://www.google.com/search?q={name} 美食"
                     })
 
         except requests.exceptions.RequestException as e:
