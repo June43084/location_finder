@@ -1,554 +1,867 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
-  <meta charset="UTF-8" />
+
+  <meta charset="UTF-8">
+
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
-  />
+  >
 
-  <title>吃喝玩樂搜尋器</title>
+  <title>
+    吃喝玩樂搜尋器
+  </title>
 
   <link
     rel="stylesheet"
     href="/static/style.css"
-  />
+  >
 
-  <link
-    rel="icon"
-    href="/static/favicon.ico"
-    type="image/x-icon"
-  />
 </head>
 
 <body>
-  <main class="container">
-    <h1>吃喝玩樂搜尋器</h1>
+
+<main class="container">
+
+  <h1>
+    吃喝玩樂搜尋器
+  </h1>
+
+  <div
+    id="message"
+    class="message"
+    aria-live="polite"
+  ></div>
+
+
+  <section>
+
+    <h2>
+      我的位置
+    </h2>
+
+    <p id="currentLocationDisplay">
+      正在獲取您的位置...
+    </p>
+
+    <button
+      id="getLocationBtn"
+      class="btn"
+      type="button"
+    >
+      重新獲取我的位置
+    </button>
+
 
     <div
-      id="message"
-      class="message"
-      aria-live="polite"
-    ></div>
+      id="manualLocationInput"
+      class="hidden-section"
+    >
 
-    <section id="locationSection">
-      <h2>我的位置</h2>
-
-      <p id="currentLocationDisplay">
-        正在獲取您的位置...
+      <p>
+        或輸入您的地址：
       </p>
 
+      <input
+        id="addressInput"
+        type="text"
+        placeholder="例如：台北市信義區市府路1號"
+      >
+
       <button
-        id="getLocationBtn"
+        id="geocodeAddressBtn"
         class="btn"
         type="button"
       >
-        重新獲取我的位置
+        轉換地址
       </button>
 
-      <div
-        id="manualLocationInput"
-        class="hidden-section"
+    </div>
+
+  </section>
+
+
+  <section
+    id="placeTypeSelection"
+    class="hidden-section"
+  >
+
+    <h2>
+      搜尋附近地點
+    </h2>
+
+    <p>
+      請選擇您想搜尋的「吃喝玩樂」類型：
+    </p>
+
+
+    <select id="searchType">
+
+      <optgroup label="🍽️ 吃喝">
+
+        <option value="restaurant">
+          餐廳
+        </option>
+
+        <option value="cafe">
+          咖啡廳
+        </option>
+
+        <option value="bar">
+          酒吧
+        </option>
+
+        <option value="bakery">
+          麵包店
+        </option>
+
+        <option value="meal_delivery">
+          餐點外送
+        </option>
+
+        <option value="meal_takeaway">
+          餐點外帶
+        </option>
+
+      </optgroup>
+
+
+      <optgroup label="🎡 玩樂">
+
+        <option value="amusement_park">
+          遊樂園
+        </option>
+
+        <option value="park">
+          公園
+        </option>
+
+        <option value="museum">
+          博物館
+        </option>
+
+        <option value="movie_theater">
+          電影院
+        </option>
+
+        <option value="bowling_alley">
+          保齡球館
+        </option>
+
+        <option value="shopping_mall">
+          購物中心
+        </option>
+
+        <option value="spa">
+          SPA
+        </option>
+
+        <option value="beauty_salon">
+          美容院
+        </option>
+
+        <option value="gym">
+          健身房
+        </option>
+
+        <option value="zoo">
+          動物園
+        </option>
+
+        <option value="tourist_attraction">
+          觀光景點
+        </option>
+
+        <option value="night_club">
+          KTV / 夜店
+        </option>
+
+      </optgroup>
+
+    </select>
+
+
+    <div class="range-container">
+
+      <label for="searchRadius">
+        搜尋範圍
+      </label>
+
+      <input
+        id="searchRadius"
+        type="range"
+        min="100"
+        max="15000"
+        value="5000"
+        step="100"
       >
-        <p>或輸入您的地址：</p>
 
-        <input
-          type="text"
-          id="addressInput"
-          placeholder="例如：台北市信義區市府路1號"
-          autocomplete="street-address"
-        />
+      <div class="range-value">
 
-        <button
-          id="geocodeAddressBtn"
-          class="btn"
-          type="button"
-        >
-          轉換地址
-        </button>
-      </div>
-    </section>
-
-    <section
-      id="placeTypeSelection"
-      class="hidden-section"
-    >
-      <h2>搜尋附近地點</h2>
-
-      <p>
-        請選擇您想搜尋的「吃喝玩樂」類型：
-      </p>
-
-      <select id="searchType">
-        <optgroup label="🍽️ 吃喝">
-          <option value="restaurant">餐廳</option>
-          <option value="cafe">咖啡廳</option>
-          <option value="bar">酒吧</option>
-          <option value="bakery">麵包店</option>
-          <option value="meal_delivery">餐點外送</option>
-          <option value="meal_takeaway">餐點外帶</option>
-        </optgroup>
-
-        <optgroup label="🎡 玩樂">
-          <option value="amusement_park">遊樂園</option>
-          <option value="park">公園</option>
-          <option value="museum">博物館</option>
-          <option value="movie_theater">電影院</option>
-          <option value="bowling_alley">保齡球館</option>
-          <option value="shopping_mall">購物中心</option>
-          <option value="spa">SPA</option>
-          <option value="beauty_salon">美容院</option>
-          <option value="gym">健身房</option>
-          <option value="zoo">動物園</option>
-          <option value="tourist_attraction">觀光景點</option>
-          <option value="night_club">KTV / 夜店</option>
-        </optgroup>
-      </select>
-
-      <div class="range-container">
-        <label for="searchRadius">
-          搜尋範圍
-        </label>
-
-        <input
-          type="range"
-          id="searchRadius"
-          min="100"
-          max="10000"
-          value="5000"
-          step="100"
-        />
-
-        <div class="range-value">
-          <span id="radiusValue">5000</span>
-          公尺
-        </div>
-      </div>
-
-      <button
-        id="searchNearbyBtn"
-        class="btn btn-primary"
-        type="button"
-      >
-        開始搜尋
-      </button>
-    </section>
-
-    <section id="resultsContainer">
-      <div class="results-heading-row">
-        <div>
-          <h2>搜尋結果</h2>
-
-          <p class="result-note">
-            手機每頁 5 家；電腦每頁 10 家（5 欄 × 2 列）。
-          </p>
-
-          <p class="result-note">
-            若店家無可用圖片，會以風景鹿圖替代。
-          </p>
-        </div>
-
-        <a
-          id="jumpToWheelBtn"
-          href="#wheelSection"
-          class="btn btn-wheel hidden-section"
-        >
-          🎡 直接前往轉盤
-        </a>
-      </div>
-
-      <div
-        id="placesActions"
-        class="places-actions hidden-section"
-      >
-        <button
-          id="selectAllBtn"
-          class="btn-small"
-          type="button"
-        >
-          全選
-        </button>
-
-        <button
-          id="deselectAllBtn"
-          class="btn-small"
-          type="button"
-        >
-          全不選
-        </button>
-
-        <button
-          id="updateWheelBtn"
-          class="btn-small"
-          type="button"
-        >
-          🎯 更新並前往轉盤
-        </button>
-      </div>
-
-      <div
-        id="resultsSummary"
-        class="results-summary"
-        aria-live="polite"
-      ></div>
-
-      <div
-        id="placesList"
-        class="places-grid"
-      ></div>
-
-      <nav
-        id="pagination"
-        class="pagination hidden-section"
-        aria-label="搜尋結果分頁"
-      >
-        <button
-          id="prevPageBtn"
-          class="pagination-btn"
-          type="button"
-        >
-          ← 上一頁
-        </button>
-
-        <span
-          id="pageInfo"
-          class="page-info"
-        >
-          第 1 / 1 頁
+        <span id="radiusValue">
+          5000
         </span>
 
-        <button
-          id="nextPageBtn"
-          class="pagination-btn"
-          type="button"
-        >
-          下一頁 →
-        </button>
-      </nav>
-    </section>
+        公尺
 
-    <section
-      id="wheelSection"
-      class="wheel-section"
-      style="display:none;"
-    >
-      <h2>🎡 轉盤抽選</h2>
-
-      <div class="wheel-wrapper">
-        <div class="pointer"></div>
-
-        <canvas
-          id="wheelCanvas"
-          width="400"
-          height="400"
-        ></canvas>
       </div>
 
-      <button
-        id="spinBtn"
-        class="btn btn-primary"
-        type="button"
-      >
-        轉動！
-      </button>
+    </div>
 
-      <p
-        id="result"
-        class="wheel-result"
-      >
-        請按下「轉動！」開始遊戲
-      </p>
+
+    <button
+      id="searchNearbyBtn"
+      class="btn btn-primary"
+      type="button"
+    >
+      開始搜尋
+    </button>
+
+  </section>
+
+
+  <section id="resultsContainer">
+
+    <div class="results-heading-row">
+
+      <div>
+
+        <h2>
+          搜尋結果
+        </h2>
+
+        <p class="result-note">
+          **店家圖片可能載入較久
+        </p>
+
+        <p class="result-note">
+          無可用店家圖片時會顯示預設鹿圖。
+        </p>
+
+      </div>
+
 
       <a
-        href="#resultsContainer"
-        class="btn back-to-results"
+        id="jumpToWheelBtn"
+        href="#wheelSection"
+        class="btn btn-wheel hidden-section"
       >
-        ↑ 回到搜尋結果
+        🎡 直接前往轉盤
       </a>
-    </section>
-  </main>
 
-  <script src="/static/script.js"></script>
+    </div>
 
-  <script>
-    window.setupWheelWithPlaces = function (placeNames) {
-      const canvas =
-        document.getElementById('wheelCanvas');
 
-      const spinBtn =
-        document.getElementById('spinBtn');
+    <div
+      id="placesActions"
+      class="places-actions hidden-section"
+    >
 
-      const result =
-        document.getElementById('result');
+      <button
+        id="selectAllBtn"
+        class="btn-small"
+        type="button"
+      >
+        全選
+      </button>
 
-      const wheelSection =
-        document.getElementById('wheelSection');
 
-      const jumpToWheelBtn =
-        document.getElementById('jumpToWheelBtn');
+      <button
+        id="deselectAllBtn"
+        class="btn-small"
+        type="button"
+      >
+        全不選
+      </button>
+
+
+      <button
+        id="updateWheelBtn"
+        class="btn-small"
+        type="button"
+      >
+        🎯 更新並前往轉盤
+      </button>
+
+    </div>
+
+
+    <div
+      id="resultsSummary"
+      class="results-summary"
+    ></div>
+
+
+    <div
+      id="placesList"
+      class="places-grid"
+    ></div>
+
+
+    <nav
+      id="pagination"
+      class="pagination hidden-section"
+    >
+
+      <button
+        id="prevPageBtn"
+        class="pagination-btn"
+        type="button"
+      >
+        ← 上一頁
+      </button>
+
+
+      <span
+        id="pageInfo"
+        class="page-info"
+      >
+        第 1 / 1 頁
+      </span>
+
+
+      <button
+        id="nextPageBtn"
+        class="pagination-btn"
+        type="button"
+      >
+        下一頁 →
+      </button>
+
+    </nav>
+
+  </section>
+
+
+  <section
+    id="wheelSection"
+    class="wheel-section"
+    style="display:none;"
+  >
+
+    <h2>
+      🎡 轉盤抽選
+    </h2>
+
+
+    <div class="wheel-wrapper">
+
+      <div class="pointer"></div>
+
+      <canvas
+        id="wheelCanvas"
+        width="400"
+        height="400"
+      ></canvas>
+
+    </div>
+
+
+    <button
+      id="spinBtn"
+      class="btn btn-primary"
+      type="button"
+    >
+      轉動！
+    </button>
+
+
+    <p
+      id="result"
+      class="wheel-result"
+    >
+      請按下「轉動！」開始遊戲
+    </p>
+
+
+    <a
+      href="#resultsContainer"
+      class="btn back-to-results"
+    >
+      ↑ 回到搜尋結果
+    </a>
+
+  </section>
+
+</main>
+
+
+<script src="/static/script.js"></script>
+
+
+<script>
+
+window.setupWheelWithPlaces = function (
+  names
+) {
+
+  const canvas =
+    document.getElementById(
+      'wheelCanvas'
+    );
+
+  const spinBtn =
+    document.getElementById(
+      'spinBtn'
+    );
+
+  const result =
+    document.getElementById(
+      'result'
+    );
+
+  const section =
+    document.getElementById(
+      'wheelSection'
+    );
+
+  const jumpBtn =
+    document.getElementById(
+      'jumpToWheelBtn'
+    );
+
+
+  if (
+    !canvas ||
+    !spinBtn ||
+    !result ||
+    !section
+  ) {
+    return;
+  }
+
+
+  const prizes =
+    Array.isArray(
+      names
+    )
+      ?
+      names.filter(
+        Boolean
+      )
+      :
+      [];
+
+
+  if (
+    !prizes.length
+  ) {
+
+    section.style.display =
+      'none';
+
+    jumpBtn?.classList.add(
+      'hidden-section'
+    );
+
+    return;
+  }
+
+
+  section.style.display =
+    'block';
+
+  jumpBtn?.classList.remove(
+    'hidden-section'
+  );
+
+
+  const ctx =
+    canvas.getContext(
+      '2d'
+    );
+
+
+  const colors = [
+
+    '#f94144',
+    '#f3722c',
+    '#f8961e',
+    '#43aa8b',
+    '#577590',
+    '#277da1'
+
+  ];
+
+
+  const angle =
+    2 *
+    Math.PI /
+    prizes.length;
+
+
+  let rotation = 0;
+
+  let spinning = false;
+
+
+  function draw(
+    rotate = 0
+  ) {
+
+    ctx.clearRect(
+      0,
+      0,
+      400,
+      400
+    );
+
+
+    ctx.save();
+
+    ctx.translate(
+      200,
+      200
+    );
+
+    ctx.rotate(
+      rotate
+    );
+
+    ctx.translate(
+      -200,
+      -200
+    );
+
+
+    prizes.forEach(
+      (
+        name,
+        index
+      ) => {
+
+        const start =
+          index *
+          angle;
+
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+          200,
+          200
+        );
+
+        ctx.arc(
+          200,
+          200,
+          180,
+
+          start,
+          start + angle
+        );
+
+
+        ctx.fillStyle =
+          colors[
+            index %
+            colors.length
+          ];
+
+
+        ctx.fill();
+
+        ctx.stroke();
+
+
+        ctx.save();
+
+        ctx.translate(
+          200,
+          200
+        );
+
+
+        ctx.rotate(
+          start +
+          angle / 2
+        );
+
+
+        ctx.textAlign =
+          'right';
+
+        ctx.fillStyle =
+          '#fff';
+
+
+        ctx.font =
+
+          prizes.length > 30
+            ?
+            '10px Arial'
+
+            :
+
+          prizes.length > 18
+            ?
+            '11px Arial'
+
+            :
+            '14px Arial';
+
+
+        ctx.fillText(
+
+          name.slice(
+            0,
+
+            prizes.length > 30
+              ?
+              6
+              :
+              10
+          ),
+
+          160,
+
+          5
+        );
+
+
+        ctx.restore();
+
+      }
+    );
+
+
+    ctx.restore();
+
+  }
+
+
+  spinBtn.onclick =
+    () => {
 
       if (
-        !canvas ||
-        !spinBtn ||
-        !result ||
-        !wheelSection
+        spinning
       ) {
         return;
       }
 
-      const prizes =
-        Array.isArray(placeNames)
-          ? placeNames.filter(Boolean)
-          : [];
 
-      if (prizes.length === 0) {
-        wheelSection.style.display = 'none';
+      spinning = true;
 
-        if (jumpToWheelBtn) {
-          jumpToWheelBtn.classList.add(
-            'hidden-section'
+      spinBtn.disabled =
+        true;
+
+      result.textContent =
+        '轉動中...';
+
+
+      const start =
+        rotation;
+
+
+      const end =
+
+        start +
+
+        (
+          5 +
+          Math.random() *
+          3
+        )
+
+        *
+
+        2 *
+        Math.PI;
+
+
+      const started =
+        performance.now();
+
+
+      function animate(
+        now
+      ) {
+
+        const progress =
+          Math.min(
+
+            (
+              now -
+              started
+            )
+            /
+            5000,
+
+            1
           );
-        }
 
-        result.textContent =
-          '請先勾選至少一個地點';
 
-        return;
-      }
+        const ease =
 
-      wheelSection.style.display = 'block';
+          1 -
 
-      if (jumpToWheelBtn) {
-        jumpToWheelBtn.classList.remove(
-          'hidden-section'
-        );
-      }
+          Math.pow(
+            1 - progress,
+            3
+          );
 
-      const ctx =
-        canvas.getContext('2d');
 
-      const totalSegments =
-        prizes.length;
+        rotation =
 
-      const baseColors = [
-        '#f94144',
-        '#f3722c',
-        '#f8961e',
-        '#43aa8b',
-        '#577590',
-        '#277da1'
-      ];
+          start +
 
-      const colors =
-        Array.from(
-          { length: totalSegments },
-          (_, i) =>
-            baseColors[
-              i % baseColors.length
-            ]
+          (
+            end -
+            start
+          )
+
+          *
+
+          ease;
+
+
+        draw(
+          rotation
         );
 
-      const anglePerSegment =
-        (2 * Math.PI) /
-        totalSegments;
 
-      let currentAngle = 0;
-      let spinning = false;
-
-      function drawWheel(rotation = 0) {
-        ctx.clearRect(0, 0, 400, 400);
-
-        ctx.save();
-        ctx.translate(200, 200);
-        ctx.rotate(rotation);
-        ctx.translate(-200, -200);
-
-        for (
-          let i = 0;
-          i < totalSegments;
-          i++
+        if (
+          progress < 1
         ) {
-          const startAngle =
-            i * anglePerSegment;
 
-          const endAngle =
-            startAngle +
-            anglePerSegment;
-
-          ctx.beginPath();
-          ctx.moveTo(200, 200);
-
-          ctx.arc(
-            200,
-            200,
-            180,
-            startAngle,
-            endAngle
+          requestAnimationFrame(
+            animate
           );
 
-          ctx.fillStyle = colors[i];
-          ctx.fill();
-          ctx.stroke();
+          return;
 
-          ctx.save();
-          ctx.translate(200, 200);
-
-          ctx.rotate(
-            startAngle +
-            anglePerSegment / 2
-          );
-
-          ctx.textAlign = 'right';
-          ctx.fillStyle = 'white';
-          ctx.font = '14px Arial';
-
-          ctx.fillText(
-            prizes[i].slice(0, 10),
-            160,
-            10
-          );
-
-          ctx.restore();
         }
 
-        ctx.restore();
-      }
 
-      function showResult(placeName) {
-        const placeUrl =
-          window.placeUrlMap?.[
-            placeName
+        const normalized =
+
+          rotation %
+
+          (
+            2 *
+            Math.PI
+          );
+
+
+        const pointer =
+
+          (
+
+            3 *
+            Math.PI /
+            2
+
+            -
+
+            normalized
+
+            +
+
+            2 *
+            Math.PI
+
+          )
+
+          %
+
+          (
+            2 *
+            Math.PI
+          );
+
+
+        const winner =
+
+          prizes[
+
+            Math.floor(
+              pointer /
+              angle
+            )
+
+            %
+
+            prizes.length
+
           ];
+
+
+        const url =
+
+          window.placeUrlMap?.[
+            winner
+          ];
+
 
         result.textContent =
           '🎉 抽到的是：';
 
-        if (placeUrl) {
-          const link =
-            document.createElement('a');
 
-          link.href = placeUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = placeName;
-
-          result.appendChild(link);
-          result.append('！');
-        } else {
-          result.append(
-            `${placeName}！`
-          );
-        }
-      }
-
-      function spinWheel() {
         if (
-          spinning ||
-          prizes.length === 0
+          url
         ) {
-          return;
-        }
 
-        spinning = true;
-        result.textContent = '轉動中...';
-        spinBtn.disabled = true;
-
-        const startAngle =
-          currentAngle;
-
-        const spinAmount =
-          (
-            5 +
-            Math.random() * 3
-          ) *
-          2 *
-          Math.PI;
-
-        const finalAngle =
-          startAngle +
-          spinAmount;
-
-        const duration = 5000;
-        const startTime =
-          performance.now();
-
-        function animate(time) {
-          const elapsed =
-            time -
-            startTime;
-
-          const progress =
-            Math.min(
-              elapsed / duration,
-              1
+          const link =
+            document.createElement(
+              'a'
             );
 
-          const ease =
-            1 -
-            Math.pow(
-              1 - progress,
-              3
-            );
 
-          currentAngle =
-            startAngle +
-            (
-              finalAngle -
-              startAngle
-            ) *
-            ease;
+          link.href =
+            url;
 
-          drawWheel(
-            currentAngle
+          link.target =
+            '_blank';
+
+          link.rel =
+            'noopener noreferrer';
+
+          link.textContent =
+            winner;
+
+
+          result.append(
+            link,
+            '！'
           );
 
-          if (progress < 1) {
-            requestAnimationFrame(
-              animate
-            );
-            return;
-          }
+        } else {
 
-          const normalized =
-            currentAngle %
-            (2 * Math.PI);
-
-          const pointerAngle =
-            (
-              3 * Math.PI / 2 -
-              normalized +
-              2 * Math.PI
-            ) %
-            (2 * Math.PI);
-
-          const index =
-            Math.floor(
-              pointerAngle /
-              anglePerSegment
-            ) %
-            totalSegments;
-
-          showResult(
-            prizes[index]
+          result.append(
+            `${winner}！`
           );
 
-          spinning = false;
-          spinBtn.disabled = false;
         }
 
-        requestAnimationFrame(
-          animate
-        );
+
+        spinning = false;
+
+        spinBtn.disabled =
+          false;
+
       }
 
-      spinBtn.onclick =
-        spinWheel;
 
-      result.textContent =
-        '請按下「轉動！」開始遊戲';
+      requestAnimationFrame(
+        animate
+      );
 
-      drawWheel();
     };
-  </script>
+
+
+  result.textContent =
+    '請按下「轉動！」開始遊戲';
+
+
+  draw();
+
+};
+
+</script>
+
+
 </body>
+
 </html>
