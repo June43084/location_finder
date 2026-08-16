@@ -4,1351 +4,2055 @@ import hmac
 import logging
 import math
 import os
-import threading
-import time
-from collections import defaultdict, deque
-from urllib.parse import quote_plus
+from datetime import datetime
+from urllib.parse import quote_plus, urlparse
+from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request
 from flask_cors import CORS
 
+load_dotenv()
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(levelname)s - %(message)s"
 )
-
-load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_API_KEY = os.getenv(
+    "GOOGLE_API_KEY",
+    ""
+).strip()
+
+UPSTASH_URL = os.getenv(
+    "UPSTASH_REDIS_REST_URL",
+    ""
+).rstrip("/")
+
+UPSTASH_TOKEN = os.getenv(
+    "UPSTASH_REDIS_REST_TOKEN",
+    ""
+).strip()
 
 if not GOOGLE_API_KEY:
-    logging.error("GOOGLE_API_KEY 環境變數未設定。")
-    raise ValueError("GOOGLE_API_KEY 環境變數未設定。")
+    raise ValueError(
+        "GOOGLE_API_KEY 未設定"
+    )
 
-# 緊急停止 Google API 的開關。
-# Render Environment 設 GOOGLE_API_ENABLED=false 後，
-# 搜尋 / Geocoding / 圖片代理會立刻停止呼叫 Google。
 GOOGLE_API_ENABLED = (
-    os.getenv("GOOGLE_API_ENABLED", "true").strip().lower()
-    in {"1", "true", "yes", "on"}
+    os.getenv(
+        "GOOGLE_API_ENABLED",
+        "true"
+    ).lower()
+    in {
+        "1",
+        "true",
+        "yes",
+        "on"
+    }
 )
 
-GOOGLE_GEOCODING_API_BASE_URL = (
-    "https://maps.googleapis.com/maps/api/geocode/json"
+GEOCODE_URL = (
+    "https://maps.googleapis.com/"
+    "maps/api/geocode/json"
 )
-GOOGLE_PLACES_NEARBY_SEARCH_NEW_URL = (
-    "https://places.googleapis.com/v1/places:searchNearby"
+
+NEARBY_URL = (
+    "https://places.googleapis.com/"
+    "v1/places:searchNearby"
 )
-OVERPASS_API_BASE_URL = "https://overpass-api.de/api/interpreter"
+
+OVERPASS_URL = (
+    "https://overpass-api.de/"
+    "api/interpreter"
+)
 
 REQUEST_TIMEOUT = 15
 
-# 搜尋結果設定
 MAX_RESULTS = 60
+
+MAX_RADIUS = 15000
+
 GOOGLE_RESULTS_PER_REQUEST = 20
-SEARCH_POINT_OFFSET_RATIO = 0.45
-SAMPLE_RADIUS_RATIO = 0.80
-
-# 前端採分頁渲染：手機每頁 5 家、桌機每頁 10 家。
-# 因此後端可安全產生最多 60 家的照片 proxy URL；
-# 實際 Photo API 只會在該頁卡片被渲染時載入。
-# 仍可在 Render Environment 用 MAX_GOOGLE_PHOTOS_PER_SEARCH 調低上限。
-MAX_GOOGLE_PHOTOS_PER_SEARCH = int(
-    os.getenv("MAX_GOOGLE_PHOTOS_PER_SEARCH", "60")
-)
-
-# -------------------------------
-# 匿名公開網站的軟性 Rate Limit
-# -------------------------------
-# 這些限制存在 Render process 記憶體中。
-# 它們是「第二層防護」，真正的硬止血仍應在 Google Cloud 設 quota。
-SEARCHES_PER_IP_PER_MINUTE = int(
-    os.getenv("SEARCHES_PER_IP_PER_MINUTE", "3")
-)
-SEARCHES_PER_IP_PER_DAY = int(
-    os.getenv("SEARCHES_PER_IP_PER_DAY", "20")
-)
-SEARCHES_GLOBAL_PER_HOUR = int(
-    os.getenv("SEARCHES_GLOBAL_PER_HOUR", "30")
-)
-SEARCHES_GLOBAL_PER_DAY = int(
-    os.getenv("SEARCHES_GLOBAL_PER_DAY", "100")
-)
-
-GEOCODE_PER_IP_PER_MINUTE = int(
-    os.getenv("GEOCODE_PER_IP_PER_MINUTE", "10")
-)
-GEOCODE_PER_IP_PER_DAY = int(
-    os.getenv("GEOCODE_PER_IP_PER_DAY", "60")
-)
-
-PHOTO_PER_IP_PER_MINUTE = int(
-    os.getenv("PHOTO_PER_IP_PER_MINUTE", "60")
-)
-PHOTO_PER_IP_PER_DAY = int(
-    os.getenv("PHOTO_PER_IP_PER_DAY", "300")
-)
-PHOTO_GLOBAL_PER_HOUR = int(
-    os.getenv("PHOTO_GLOBAL_PER_HOUR", "600")
-)
-PHOTO_GLOBAL_PER_DAY = int(
-    os.getenv("PHOTO_GLOBAL_PER_DAY", "1500")
-)
-
-_rate_lock = threading.Lock()
-_rate_events = defaultdict(deque)
 
 
-def google_api_is_enabled():
-    return GOOGLE_API_ENABLED
+# =========================
+# 每月安全上限
+# =========================
+#
+# 不會顯示在前端。
+#
+# Nearby Search Pro：
+# Google 免費 5000
+# 我們 4500 停止
+#
+# Photo：
+# Google 免費 1000
+# 我們 900 停止
+#
+# Geocoding：
+# Google 免費 10000
+# 我們 9000 停止
+#
+# 留約 10% buffer。
+#
+
+MONTHLY_NEARBY_LIMIT = int(
+    os.getenv(
+        "MONTHLY_NEARBY_LIMIT",
+        "4500"
+    )
+)
+
+MONTHLY_PHOTO_LIMIT = int(
+    os.getenv(
+        "MONTHLY_PHOTO_LIMIT",
+        "900"
+    )
+)
+
+MONTHLY_GEOCODE_LIMIT = int(
+    os.getenv(
+        "MONTHLY_GEOCODE_LIMIT",
+        "9000"
+    )
+)
+
+PACIFIC = ZoneInfo(
+    "America/Los_Angeles"
+)
 
 
-def get_client_ip():
+class BudgetStoreError(Exception):
+    pass
+
+
+def billing_month():
     """
-    優先使用 Render/edge 常見的 CF-Connecting-IP。
-    若沒有，退回 Flask 的 remote_addr。
-    Rate limit 只是軟性防護，不應取代 Google Cloud quota。
+    Google Maps 免費額度使用
+    Pacific Time 每月重新計算。
+
+    Redis key 會長這樣：
+
+    location_finder:google:2026-08:nearby
+
+    到下個月自然會換成：
+
+    location_finder:google:2026-09:nearby
     """
-    cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
-    if cf_ip:
-        return cf_ip
 
-    return request.remote_addr or "unknown"
-
-
-def _rate_check(bucket, limit, window_seconds):
-    now = time.time()
-    key = str(bucket)
-
-    with _rate_lock:
-        events = _rate_events[key]
-        cutoff = now - window_seconds
-
-        while events and events[0] <= cutoff:
-            events.popleft()
-
-        if len(events) >= limit:
-            retry_after = max(
-                1,
-                int(window_seconds - (now - events[0]))
-            )
-            return False, retry_after
-
-        events.append(now)
-        return True, 0
+    return datetime.now(
+        PACIFIC
+    ).strftime(
+        "%Y-%m"
+    )
 
 
-def enforce_limits(rules):
+def redis_cmd(command):
     """
-    rules:
-      [
-        ("bucket-name", limit, window_seconds),
-        ...
-      ]
+    呼叫 Upstash Redis REST API。
 
-    若任何一條超限，回傳 429 Response；否則回傳 None。
+    如果 Upstash 掛掉，
+    Google API 直接 fail-closed。
+
+    也就是寧願暫時不能搜尋，
+    也不要失去額度保護。
     """
-    for bucket, limit, window_seconds in rules:
-        allowed, retry_after = _rate_check(
-            bucket,
-            limit,
-            window_seconds
+
+    if (
+        not UPSTASH_URL
+        or not UPSTASH_TOKEN
+    ):
+        raise BudgetStoreError(
+            "Upstash 環境變數未設定"
         )
 
-        if not allowed:
-            response = jsonify({
-                "error": "請求太頻繁，請稍後再試。",
-                "retry_after_seconds": retry_after
-            })
-            response.status_code = 429
-            response.headers["Retry-After"] = str(retry_after)
-            return response
+    try:
+        response = requests.post(
+            UPSTASH_URL,
+            headers={
+                "Authorization":
+                    f"Bearer {UPSTASH_TOKEN}",
 
-    return None
+                "Content-Type":
+                    "application/json",
+            },
+            json=command,
+            timeout=5,
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+    except (
+        requests.RequestException,
+        ValueError
+    ) as exc:
+
+        raise BudgetStoreError(
+            str(exc)
+        ) from exc
+
+    if data.get(
+        "error"
+    ):
+        raise BudgetStoreError(
+            data["error"]
+        )
+
+    return data.get(
+        "result"
+    )
 
 
-def google_disabled_response():
+def reserve_budget(
+    kind,
+    amount,
+    limit
+):
+    """
+    在真正呼叫 Google 前，
+    先保留本月 API 額度。
+
+    Redis INCRBY 是 atomic。
+
+    例如附近搜尋：
+
+    current = 4495
+    reserve +5
+    => 4500
+    可以搜尋
+
+    下一個：
+
+    4500 + 5
+    => 4505
+    超過限制
+
+    rollback -5
+    => 4500
+
+    並且完全不呼叫 Google。
+    """
+
+    key = (
+        "location_finder:"
+        f"google:{billing_month()}:{kind}"
+    )
+
+    value = int(
+        redis_cmd([
+            "INCRBY",
+            key,
+            int(amount)
+        ])
+    )
+
+    if value <= limit:
+        return True
+
+    try:
+        redis_cmd([
+            "INCRBY",
+            key,
+            -int(amount)
+        ])
+
+    except BudgetStoreError:
+        logging.exception(
+            "Budget rollback failed: %s",
+            key
+        )
+
+    return False
+
+
+def fail_closed():
     return jsonify({
-        "error": "Google API 暫時停用，請稍後再試。"
+        "error":
+            "使用量保護服務暫時無法確認額度，"
+            "為避免產生額外費用，"
+            "Google API 已暫停。"
     }), 503
 
 
-@app.route('/')
+def month_limit(
+    service
+):
+    return jsonify({
+        "error":
+            f"{service}本月使用量已達安全上限，"
+            "將於下個月自動恢復。"
+    }), 503
+
+
+# =========================
+# 首頁
+# =========================
+
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template(
+        "index.html"
+    )
 
 
-@app.route('/reverse_geocode')
+# =========================
+# GPS 座標 -> 地址
+# =========================
+
+@app.route(
+    "/reverse_geocode"
+)
 def reverse_geocode():
-    if not google_api_is_enabled():
-        return google_disabled_response()
 
-    client_ip = get_client_ip()
-    limited = enforce_limits([
-        (
-            f"geocode-minute:{client_ip}",
-            GEOCODE_PER_IP_PER_MINUTE,
-            60
-        ),
-        (
-            f"geocode-day:{client_ip}",
-            GEOCODE_PER_IP_PER_DAY,
-            86400
-        )
-    ])
-
-    if limited:
-        return limited
-
-    lat = request.args.get('lat', type=float)
-    lng = request.args.get('lng', type=float)
-
-    if lat is None or lng is None:
+    if not GOOGLE_API_ENABLED:
         return jsonify({
-            "error": "Missing latitude or longitude"
+            "error":
+                "Google API 暫時停用。"
+        }), 503
+
+    lat = request.args.get(
+        "lat",
+        type=float
+    )
+
+    lng = request.args.get(
+        "lng",
+        type=float
+    )
+
+    if (
+        lat is None
+        or lng is None
+    ):
+        return jsonify({
+            "error":
+                "Missing latitude or longitude"
         }), 400
 
-    params = {
-        "latlng": f"{lat},{lng}",
-        "key": GOOGLE_API_KEY,
-        "language": "zh-TW"
-    }
+    try:
+
+        allowed = reserve_budget(
+            "geocode",
+            1,
+            MONTHLY_GEOCODE_LIMIT
+        )
+
+        if not allowed:
+            return month_limit(
+                "地址定位服務"
+            )
+
+    except BudgetStoreError:
+
+        logging.exception(
+            "Geocode budget store unavailable"
+        )
+
+        return fail_closed()
 
     try:
+
         response = requests.get(
-            GOOGLE_GEOCODING_API_BASE_URL,
-            params=params,
-            timeout=REQUEST_TIMEOUT
+            GEOCODE_URL,
+
+            params={
+                "latlng":
+                    f"{lat},{lng}",
+
+                "key":
+                    GOOGLE_API_KEY,
+
+                "language":
+                    "zh-TW"
+            },
+
+            timeout=
+                REQUEST_TIMEOUT,
         )
+
         response.raise_for_status()
+
         data = response.json()
 
-        if data.get('status') == 'OK' and data.get('results'):
-            formatted_address = (
-                data['results'][0]['formatted_address']
+        if (
+            data.get(
+                "status"
+            ) == "OK"
+            and data.get(
+                "results"
             )
+        ):
+
             return jsonify({
-                "address": formatted_address
+                "address":
+                    data[
+                        "results"
+                    ][0][
+                        "formatted_address"
+                    ]
             })
 
-        logging.warning(
-            "Google Geocoding API 查詢失敗或無結果: %s",
-            data.get('status')
-        )
         return jsonify({
-            "error": "無法解析地址",
-            "details": data.get('status')
+            "error":
+                "無法解析地址",
+
+            "details":
+                data.get(
+                    "status"
+                )
         }), 404
 
-    except requests.exceptions.RequestException as e:
-        logging.error(
-            "反向地理編碼請求失敗: %s",
-            e
+    except requests.RequestException:
+
+        logging.exception(
+            "Reverse geocode failed"
         )
+
         return jsonify({
-            "error": "反向地理編碼服務錯誤"
+            "error":
+                "反向地理編碼服務錯誤"
         }), 500
 
 
-@app.route('/geocode_address', methods=['POST'])
+# =========================
+# 地址 -> GPS 座標
+# =========================
+
+@app.route(
+    "/geocode_address",
+    methods=["POST"]
+)
 def geocode_address():
-    if not google_api_is_enabled():
-        return google_disabled_response()
 
-    client_ip = get_client_ip()
-    limited = enforce_limits([
-        (
-            f"geocode-minute:{client_ip}",
-            GEOCODE_PER_IP_PER_MINUTE,
-            60
-        ),
-        (
-            f"geocode-day:{client_ip}",
-            GEOCODE_PER_IP_PER_DAY,
-            86400
+    if not GOOGLE_API_ENABLED:
+
+        return jsonify({
+            "error":
+                "Google API 暫時停用。"
+        }), 503
+
+    body = (
+        request.get_json(
+            silent=True
         )
-    ])
+        or {}
+    )
 
-    if limited:
-        return limited
-
-    data = request.get_json(silent=True) or {}
-    address = (data.get('address') or '').strip()
+    address = (
+        body.get(
+            "address"
+        )
+        or ""
+    ).strip()
 
     if not address:
+
         return jsonify({
-            "error": "Missing address"
+            "error":
+                "Missing address"
         }), 400
 
-    params = {
-        "address": address,
-        "key": GOOGLE_API_KEY,
-        "language": "zh-TW"
-    }
+    try:
+
+        allowed = reserve_budget(
+            "geocode",
+            1,
+            MONTHLY_GEOCODE_LIMIT
+        )
+
+        if not allowed:
+
+            return month_limit(
+                "地址定位服務"
+            )
+
+    except BudgetStoreError:
+
+        logging.exception(
+            "Geocode budget store unavailable"
+        )
+
+        return fail_closed()
 
     try:
+
         response = requests.get(
-            GOOGLE_GEOCODING_API_BASE_URL,
-            params=params,
-            timeout=REQUEST_TIMEOUT
+            GEOCODE_URL,
+
+            params={
+                "address":
+                    address,
+
+                "key":
+                    GOOGLE_API_KEY,
+
+                "language":
+                    "zh-TW"
+            },
+
+            timeout=
+                REQUEST_TIMEOUT,
         )
+
         response.raise_for_status()
-        result = response.json()
+
+        data = response.json()
 
         if (
-            result.get('status') == 'OK'
-            and result.get('results')
-        ):
-            location = (
-                result['results'][0]['geometry']['location']
+            data.get(
+                "status"
+            ) == "OK"
+            and data.get(
+                "results"
             )
-            formatted_address = (
-                result['results'][0]['formatted_address']
+        ):
+
+            first = (
+                data[
+                    "results"
+                ][0]
+            )
+
+            location = (
+                first[
+                    "geometry"
+                ][
+                    "location"
+                ]
             )
 
             return jsonify({
-                "lat": location['lat'],
-                "lng": location['lng'],
-                "formatted_address": formatted_address
+                "lat":
+                    location[
+                        "lat"
+                    ],
+
+                "lng":
+                    location[
+                        "lng"
+                    ],
+
+                "formatted_address":
+                    first[
+                        "formatted_address"
+                    ]
             })
 
-        logging.warning(
-            "Google Geocoding API 地址轉換失敗或無結果: %s",
-            result.get('status')
-        )
         return jsonify({
-            "error": "無法找到該地址的座標",
-            "details": result.get('status')
+            "error":
+                "無法找到該地址的座標",
+
+            "details":
+                data.get(
+                    "status"
+                )
         }), 404
 
-    except requests.exceptions.RequestException as e:
-        logging.error(
-            "地址轉換請求失敗: %s",
-            e
+    except requests.RequestException:
+
+        logging.exception(
+            "Geocode address failed"
         )
+
         return jsonify({
-            "error": "地址轉換服務錯誤"
+            "error":
+                "地址轉換服務錯誤"
         }), 500
 
 
-@app.route('/nearby_search', methods=['POST'])
+# =========================
+# 附近搜尋
+# =========================
+
+@app.route(
+    "/nearby_search",
+    methods=["POST"]
+)
 def nearby_search():
-    if not google_api_is_enabled():
-        return google_disabled_response()
 
-    client_ip = get_client_ip()
+    if not GOOGLE_API_ENABLED:
 
-    limited = enforce_limits([
-        (
-            f"search-minute:{client_ip}",
-            SEARCHES_PER_IP_PER_MINUTE,
-            60
-        ),
-        (
-            f"search-day:{client_ip}",
-            SEARCHES_PER_IP_PER_DAY,
-            86400
-        ),
-        (
-            "search-global-hour",
-            SEARCHES_GLOBAL_PER_HOUR,
-            3600
-        ),
-        (
-            "search-global-day",
-            SEARCHES_GLOBAL_PER_DAY,
-            86400
-        )
-    ])
-
-    if limited:
-        logging.warning(
-            "附近搜尋被 rate limit：ip=%s",
-            client_ip
-        )
-        return limited
-
-    data = request.get_json(silent=True) or {}
-
-    lat = data.get('lat')
-    lng = data.get('lng')
-    place_type = data.get('type')
-    radius = data.get('radius', 5000)
-
-    if lat is None or lng is None or not place_type:
         return jsonify({
-            "error": "Missing lat, lng, or type"
+            "error":
+                "Google API 暫時停用。"
+        }), 503
+
+    body = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
+
+    lat = body.get(
+        "lat"
+    )
+
+    lng = body.get(
+        "lng"
+    )
+
+    place_type = body.get(
+        "type"
+    )
+
+    radius = body.get(
+        "radius",
+        5000
+    )
+
+    if (
+        lat is None
+        or lng is None
+        or not place_type
+    ):
+
+        return jsonify({
+            "error":
+                "Missing lat, lng, or type"
         }), 400
 
     try:
-        lat = float(lat)
-        lng = float(lng)
-        radius = int(radius)
-    except (TypeError, ValueError):
+
+        lat = float(
+            lat
+        )
+
+        lng = float(
+            lng
+        )
+
+        radius = int(
+            radius
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
         return jsonify({
-            "error": "Invalid lat, lng, or radius"
+            "error":
+                "Invalid lat, lng, or radius"
         }), 400
 
     radius = max(
         100,
-        min(radius, 10000)
+        min(
+            radius,
+            MAX_RADIUS
+        )
     )
 
-    google_places = search_google_places_multi_point(
-        origin_lat=lat,
-        origin_lng=lng,
-        place_type=place_type,
-        radius=radius
+    # -------------------------
+    # 一次網站搜尋固定 5 個點
+    #
+    # center
+    # north
+    # south
+    # east
+    # west
+    #
+    # 所以先一次保留
+    # 5 次 Nearby API 額度。
+    # -------------------------
+
+    try:
+
+        allowed = reserve_budget(
+            "nearby",
+            5,
+            MONTHLY_NEARBY_LIMIT
+        )
+
+        if not allowed:
+
+            return month_limit(
+                "附近搜尋服務"
+            )
+
+    except BudgetStoreError:
+
+        logging.exception(
+            "Nearby budget store unavailable"
+        )
+
+        return fail_closed()
+
+    google_places = (
+        google_multi_search(
+            lat,
+            lng,
+            place_type,
+            radius
+        )
     )
 
-    # OSM 不使用 Google API key，也不會產生 Google Maps Platform 費用。
-    osm_places = search_osm_places(
-        lat=lat,
-        lng=lng,
-        place_type=place_type,
-        radius=radius
+    osm_places = (
+        osm_search(
+            lat,
+            lng,
+            place_type,
+            radius
+        )
     )
 
-    final_unique_places = {}
+    merged = {}
 
     for place in google_places:
-        final_unique_places[
-            make_unique_key(place)
+
+        merged[
+            unique_key(
+                place
+            )
         ] = place
 
     for place in osm_places:
-        unique_key = make_unique_key(place)
 
-        if unique_key not in final_unique_places:
-            final_unique_places[unique_key] = place
+        merged.setdefault(
+            unique_key(
+                place
+            ),
+            place
+        )
 
-    final_places_list = list(
-        final_unique_places.values()
-    )
-
-    final_places_list = [
+    places = [
         place
-        for place in final_places_list
+        for place
+        in merged.values()
+
         if (
-            place.get('distance') is not None
-            and place['distance'] <= radius
+            place.get(
+                "distance"
+            )
+            is not None
+
+            and place[
+                "distance"
+            ] <= radius
         )
     ]
 
-    # 已移除 rating / userRatingCount，
-    # 避免只是為排序而把 Nearby Search 拉到更高價 SKU。
-    # 現在排序以 Google 結果優先，再依距離與名稱。
-    final_places_list.sort(
+    places.sort(
         key=lambda place: (
-            place.get('source') == 'Google',
-            -(place.get('distance') or float('inf')),
-            place.get('name') or ''
-        ),
-        reverse=True
+
+            0
+            if place.get(
+                "source"
+            ) == "Google"
+            else 1,
+
+            place.get(
+                "distance",
+                float(
+                    "inf"
+                )
+            ),
+
+            place.get(
+                "name"
+            )
+            or ""
+        )
     )
 
-    final_places_list = final_places_list[:MAX_RESULTS]
-
-    attach_safe_photo_urls(
-        final_places_list
+    places = (
+        places[
+            :MAX_RESULTS
+        ]
     )
 
-    logging.info(
-        (
-            "附近搜尋完成：ip=%s, Google=%d, "
-            "OSM=%d, 回傳=%d"
-        ),
-        client_ip,
-        len(google_places),
-        len(osm_places),
-        len(final_places_list)
+    add_photo_proxy_urls(
+        places
     )
+
+    # 注意：
+    # 不回傳任何 API quota、
+    # 使用率或剩餘百分比。
 
     return jsonify({
-        "places": final_places_list,
-        "meta": {
-            "google_count": len(google_places),
-            "osm_count": len(osm_places),
-            "returned_count": len(final_places_list),
-            "google_requests": 5,
-            "google_photos_max": (
-                MAX_GOOGLE_PHOTOS_PER_SEARCH
-            ),
-            "radius": radius
-        }
+        "places":
+            places
     })
 
 
-def search_google_places_multi_point(
+# =========================
+# Google 多點搜尋
+# =========================
+
+def google_multi_search(
     origin_lat,
     origin_lng,
     place_type,
     radius
 ):
-    search_points = build_search_points(
+
+    points = search_points(
         origin_lat,
         origin_lng,
         radius
     )
 
-    sample_radius = max(
-        100,
-        int(radius * SAMPLE_RADIUS_RATIO)
-    )
-
     sample_radius = min(
-        sample_radius,
-        radius
+        radius,
+
+        max(
+            100,
+            int(
+                radius * 0.8
+            )
+        )
     )
 
-    unique_google_places = {}
+    unique = {}
 
     for index, (
         sample_lat,
         sample_lng
-    ) in enumerate(search_points):
-        rank_preference = (
+    ) in enumerate(
+        points
+    ):
+
+        rank = (
             "POPULARITY"
             if index == 0
             else "DISTANCE"
         )
 
-        places = search_google_places_once(
-            origin_lat=origin_lat,
-            origin_lng=origin_lng,
-            sample_lat=sample_lat,
-            sample_lng=sample_lng,
-            place_type=place_type,
-            sample_radius=sample_radius,
-            rank_preference=rank_preference
+        results = (
+            google_search_once(
+                origin_lat,
+                origin_lng,
+
+                sample_lat,
+                sample_lng,
+
+                place_type,
+                sample_radius,
+
+                rank
+            )
         )
 
-        for place in places:
-            if place['distance'] > radius:
+        for place in results:
+
+            if (
+                place[
+                    "distance"
+                ] > radius
+            ):
                 continue
 
-            place_id = place.get('id')
+            place_id = (
+                place.get(
+                    "id"
+                )
+            )
 
             if place_id:
-                dedupe_key = (
-                    f"google:{place_id}"
+
+                key = (
+                    f"google:"
+                    f"{place_id}"
                 )
+
             else:
-                dedupe_key = (
-                    "fallback:"
-                    f"{place.get('name', '').lower().strip()}:"
+
+                key = (
+                    f"{place.get('name', '').lower()}:"
                     f"{round(place['latitude'], 5)}:"
                     f"{round(place['longitude'], 5)}"
                 )
 
-            existing = unique_google_places.get(
-                dedupe_key
+            old = unique.get(
+                key
             )
 
             if (
-                existing is None
-                or place['distance']
-                < existing['distance']
+                old is None
+                or place[
+                    "distance"
+                ]
+                <
+                old[
+                    "distance"
+                ]
             ):
-                unique_google_places[
-                    dedupe_key
+
+                unique[
+                    key
                 ] = place
 
-    google_places = list(
-        unique_google_places.values()
+    return list(
+        unique.values()
     )
 
-    logging.info(
-        "Google 5 點搜尋去重後 %d 筆",
-        len(google_places)
-    )
 
-    return google_places
-
-
-def search_google_places_once(
+def google_search_once(
     origin_lat,
     origin_lng,
-    sample_lat,
-    sample_lng,
+
+    lat,
+    lng,
+
     place_type,
-    sample_radius,
-    rank_preference
+    radius,
+
+    rank
 ):
-    google_places = []
 
     headers = {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        # 刻意不要求 rating / userRatingCount。
-        "X-Goog-FieldMask": (
-            "places.displayName,"
-            "places.formattedAddress,"
-            "places.location,"
-            "places.id,"
-            "places.photos"
-        )
+
+        "Content-Type":
+            "application/json",
+
+        "X-Goog-Api-Key":
+            GOOGLE_API_KEY,
+
+        # 刻意不抓 rating、
+        # userRatingCount。
+        #
+        # 避免把搜尋拉到更高價欄位。
+        "X-Goog-FieldMask":
+            (
+                "places.displayName,"
+                "places.formattedAddress,"
+                "places.location,"
+                "places.id,"
+                "places.photos"
+            ),
     }
 
     payload = {
-        "includedTypes": [place_type],
-        "maxResultCount": (
-            GOOGLE_RESULTS_PER_REQUEST
-        ),
-        "rankPreference": rank_preference,
+
+        "includedTypes": [
+            place_type
+        ],
+
+        "maxResultCount":
+            GOOGLE_RESULTS_PER_REQUEST,
+
+        "rankPreference":
+            rank,
+
         "locationRestriction": {
             "circle": {
+
                 "center": {
-                    "latitude": sample_lat,
-                    "longitude": sample_lng
+                    "latitude":
+                        lat,
+
+                    "longitude":
+                        lng
                 },
-                "radius": sample_radius
+
+                "radius":
+                    radius,
             }
         },
-        "languageCode": "zh-TW"
+
+        "languageCode":
+            "zh-TW",
     }
 
     try:
+
         response = requests.post(
-            GOOGLE_PLACES_NEARBY_SEARCH_NEW_URL,
-            headers=headers,
-            json=payload,
-            timeout=REQUEST_TIMEOUT
+            NEARBY_URL,
+
+            headers=
+                headers,
+
+            json=
+                payload,
+
+            timeout=
+                REQUEST_TIMEOUT,
         )
+
         response.raise_for_status()
-        google_data = response.json()
 
-        for place in google_data.get(
-            'places',
-            []
+        data = (
+            response.json()
+        )
+
+    except requests.RequestException:
+
+        logging.exception(
+            "Google Nearby Search failed"
+        )
+
+        return []
+
+    output = []
+
+    for place in data.get(
+        "places",
+        []
+    ):
+
+        location = (
+            place.get(
+                "location"
+            )
+            or {}
+        )
+
+        place_lat = (
+            location.get(
+                "latitude"
+            )
+        )
+
+        place_lng = (
+            location.get(
+                "longitude"
+            )
+        )
+
+        name = (
+            place.get(
+                "displayName"
+            )
+            or {}
+        ).get(
+            "text"
+        )
+
+        if (
+            not name
+            or place_lat is None
+            or place_lng is None
         ):
-            location = (
-                place.get('location')
-                or {}
+            continue
+
+        place_id = (
+            place.get(
+                "id"
+            )
+        )
+
+        if place_id:
+
+            map_url = (
+                "https://www.google.com/"
+                "maps/search/?api=1"
+                f"&query={quote_plus(name)}"
+                f"&query_place_id="
+                f"{quote_plus(place_id)}"
             )
 
-            place_lat = location.get(
-                'latitude'
+        else:
+
+            map_url = (
+                "https://www.google.com/"
+                "maps/search/?api=1"
+                f"&query="
+                f"{quote_plus(f'{place_lat},{place_lng}')}"
             )
-            place_lng = location.get(
-                'longitude'
+
+        photos = (
+            place.get(
+                "photos"
             )
+            or []
+        )
 
-            display_name = (
-                place.get('displayName')
-                or {}
-            ).get('text')
+        photo_ref = (
+            photos[0].get(
+                "name"
+            )
+            if photos
+            else None
+        )
 
-            if (
-                not display_name
-                or place_lat is None
-                or place_lng is None
-            ):
-                continue
+        output.append({
 
-            distance = calculate_distance(
-                origin_lat,
-                origin_lng,
+            "id":
+                place_id,
+
+            "name":
+                name,
+
+            "formatted_address":
+                place.get(
+                    "formattedAddress"
+                ),
+
+            "vicinity":
+                place.get(
+                    "formattedAddress"
+                ),
+
+            "latitude":
                 place_lat,
-                place_lng
-            )
 
-            place_id = place.get('id')
+            "longitude":
+                place_lng,
 
-            if place_id:
-                map_url = (
-                    "https://www.google.com/maps/search/?api=1"
-                    f"&query={quote_plus(display_name)}"
-                    f"&query_place_id={quote_plus(place_id)}"
-                )
-            else:
-                map_url = (
-                    "https://www.google.com/maps/search/?api=1"
-                    f"&query={quote_plus(f'{place_lat},{place_lng}')}"
-                )
+            "source":
+                "Google",
 
-            photos = place.get("photos") or []
-            photo_ref = None
+            "distance":
+                distance_m(
+                    origin_lat,
+                    origin_lng,
 
-            if photos:
-                photo_ref = photos[0].get(
-                    "name"
-                )
-
-            google_places.append({
-                "id": place_id,
-                "name": display_name,
-                "formatted_address": (
-                    place.get(
-                        'formattedAddress'
-                    )
+                    place_lat,
+                    place_lng
                 ),
-                "vicinity": (
-                    place.get(
-                        'formattedAddress'
-                    )
-                ),
-                "latitude": place_lat,
-                "longitude": place_lng,
-                "source": "Google",
-                "distance": distance,
-                # 只暫存在 server-side Python 物件，
-                # 回傳前會移除。
-                "_photo_ref": photo_ref,
-                "photo_url": (
-                    "/static/placeholder.jpg"
-                ),
-                "map_url": map_url,
-                "food_search_url": (
-                    "https://www.google.com/search?q="
-                    f"{quote_plus(display_name)}"
-                )
-            })
 
-    except requests.exceptions.RequestException as e:
-        logging.error(
-            (
-                "Google Places API 搜尋失敗 "
-                "(lat=%s, lng=%s, rank=%s): %s"
-            ),
-            sample_lat,
-            sample_lng,
-            rank_preference,
-            e
+            "_photo_ref":
+                photo_ref,
+
+            "photo_url":
+                "/static/placeholder.jpg",
+
+            "map_url":
+                map_url,
+        })
+
+    return output
+
+
+# =========================
+# Google Photo
+# =========================
+
+def photo_token(
+    photo_ref
+):
+
+    encoded = (
+        base64
+        .urlsafe_b64encode(
+            photo_ref.encode()
         )
-    except (
-        KeyError,
-        TypeError,
-        ValueError
-    ) as e:
-        logging.error(
-            "Google Places API 資料錯誤: %s",
-            e
-        )
-
-    return google_places
-
-
-def build_photo_token(photo_ref):
-    encoded_ref = (
-        base64.urlsafe_b64encode(
-            photo_ref.encode("utf-8")
-        )
-        .decode("ascii")
+        .decode()
         .rstrip("=")
     )
 
     signature = hmac.new(
-        GOOGLE_API_KEY.encode("utf-8"),
-        encoded_ref.encode("ascii"),
+
+        GOOGLE_API_KEY.encode(),
+
+        encoded.encode(),
+
         hashlib.sha256
+
     ).hexdigest()
 
-    return encoded_ref, signature
+    return (
+        encoded,
+        signature
+    )
 
 
-def verify_and_decode_photo_token(
-    encoded_ref,
+def decode_photo_token(
+    encoded,
     signature
 ):
-    expected_signature = hmac.new(
-        GOOGLE_API_KEY.encode("utf-8"),
-        encoded_ref.encode("ascii"),
+
+    expected = hmac.new(
+
+        GOOGLE_API_KEY.encode(),
+
+        encoded.encode(),
+
         hashlib.sha256
+
     ).hexdigest()
 
     if not hmac.compare_digest(
-        expected_signature,
+        expected,
         signature
     ):
         return None
 
-    padding = "=" * (
-        (-len(encoded_ref)) % 4
-    )
-
     try:
-        decoded = base64.urlsafe_b64decode(
-            encoded_ref + padding
-        ).decode("utf-8")
+
+        raw = (
+            base64
+            .urlsafe_b64decode(
+
+                encoded
+                +
+                "="
+                *
+                (
+                    (
+                        -len(
+                            encoded
+                        )
+                    )
+                    % 4
+                )
+            )
+            .decode()
+        )
+
     except (
         ValueError,
         UnicodeDecodeError
     ):
+
         return None
 
-    # 只允許 Places Photo resource name，
-    # 防止把 proxy 變成任意 Google API relay。
     if (
-        not decoded.startswith("places/")
-        or "/photos/" not in decoded
+        raw.startswith(
+            "places/"
+        )
+
+        and
+        "/photos/"
+        in raw
     ):
-        return None
 
-    return decoded
+        return raw
+
+    return None
 
 
-def attach_safe_photo_urls(
+def add_photo_proxy_urls(
     places
 ):
-    used = 0
 
     for place in places:
-        photo_ref = place.pop(
-            "_photo_ref",
-            None
+
+        photo_ref = (
+            place.pop(
+                "_photo_ref",
+                None
+            )
         )
 
         if (
-            place.get("source") == "Google"
+            place.get(
+                "source"
+            ) == "Google"
+
             and photo_ref
-            and used
-            < MAX_GOOGLE_PHOTOS_PER_SEARCH
         ):
-            encoded_ref, signature = (
-                build_photo_token(
+
+            encoded, signature = (
+                photo_token(
                     photo_ref
                 )
             )
 
-            place["photo_url"] = (
+            place[
+                "photo_url"
+            ] = (
                 "/place_photo"
-                f"?ref={quote_plus(encoded_ref)}"
+                f"?ref={quote_plus(encoded)}"
                 f"&sig={signature}"
             )
 
-            used += 1
         else:
-            place["photo_url"] = (
+
+            place[
+                "photo_url"
+            ] = (
                 "/static/placeholder.jpg"
             )
 
 
-@app.route('/place_photo')
+@app.route(
+    "/place_photo"
+)
 def place_photo():
-    if not google_api_is_enabled():
-        return google_disabled_response()
 
-    client_ip = get_client_ip()
+    """
+    Browser
+      ↓
+    Render /place_photo
+      ↓
+    驗證 signed token
+      ↓
+    Redis 月度 Photo counter
+      ↓
+    Google Place Photo
+      ↓
+    取得 photoUri
+      ↓
+    302 到 Google 圖片 CDN
 
-    limited = enforce_limits([
-        (
-            f"photo-minute:{client_ip}",
-            PHOTO_PER_IP_PER_MINUTE,
-            60
-        ),
-        (
-            f"photo-day:{client_ip}",
-            PHOTO_PER_IP_PER_DAY,
-            86400
-        ),
-        (
-            "photo-global-hour",
-            PHOTO_GLOBAL_PER_HOUR,
-            3600
-        ),
-        (
-            "photo-global-day",
-            PHOTO_GLOBAL_PER_DAY,
-            86400
+    API key 永遠不出現在 Browser URL。
+    """
+
+    if not GOOGLE_API_ENABLED:
+
+        return redirect(
+            "/static/placeholder.jpg",
+            code=302
         )
-    ])
 
-    if limited:
-        return limited
-
-    encoded_ref = (
-        request.args.get("ref")
+    encoded = (
+        request.args.get(
+            "ref"
+        )
         or ""
     ).strip()
 
     signature = (
-        request.args.get("sig")
+        request.args.get(
+            "sig"
+        )
         or ""
     ).strip()
 
-    if not encoded_ref or not signature:
-        return jsonify({
-            "error": "Invalid photo token"
-        }), 400
-
     photo_ref = (
-        verify_and_decode_photo_token(
-            encoded_ref,
+
+        decode_photo_token(
+            encoded,
             signature
         )
+
+        if (
+            encoded
+            and signature
+        )
+
+        else None
     )
 
     if not photo_ref:
-        return jsonify({
-            "error": "Invalid photo token"
-        }), 403
 
-    google_url = (
-        f"https://places.googleapis.com/v1/"
-        f"{photo_ref}/media"
-    )
-
-    params = {
-        "key": GOOGLE_API_KEY,
-        "maxWidthPx": 400
-    }
+        return redirect(
+            "/static/placeholder.jpg",
+            code=302
+        )
 
     try:
-        google_response = requests.get(
-            google_url,
-            params=params,
-            timeout=REQUEST_TIMEOUT,
-            allow_redirects=True
-        )
-        google_response.raise_for_status()
 
-        content_type = (
-            google_response.headers.get(
-                "Content-Type"
+        allowed = reserve_budget(
+            "photo",
+            1,
+            MONTHLY_PHOTO_LIMIT
+        )
+
+        if not allowed:
+
+            # Photo 免費額度接近上限。
+            #
+            # 不關掉整個網站，
+            # 直接全部變鹿圖。
+            #
+            # 因此不再產生
+            # Google Photo API request。
+
+            return redirect(
+                "/static/placeholder.jpg",
+                code=302
             )
-            or "image/jpeg"
+
+    except BudgetStoreError:
+
+        logging.exception(
+            "Photo budget store unavailable"
         )
 
-        response = Response(
-            google_response.content,
-            status=200,
-            content_type=content_type
+        # fail closed
+
+        return redirect(
+            "/static/placeholder.jpg",
+            code=302
         )
 
-        # 不在自己的伺服器長期快取 Places Photo。
-        # 瀏覽器只允許短暫快取，主要目的為避免單頁重複載入。
-        response.headers[
-            "Cache-Control"
-        ] = "private, max-age=300"
+    try:
 
-        return response
+        response = requests.get(
 
-    except requests.exceptions.RequestException as e:
-        logging.error(
-            "Place Photo 代理失敗: %s",
-            e
+            (
+                "https://places.googleapis.com/"
+                f"v1/{photo_ref}/media"
+            ),
+
+            params={
+
+                "key":
+                    GOOGLE_API_KEY,
+
+                "maxWidthPx":
+                    400,
+
+                "skipHttpRedirect":
+                    "true",
+            },
+
+            timeout=
+                REQUEST_TIMEOUT,
         )
 
-        # 圖片 API 出問題時直接回 placeholder，
-        # 不讓前端出現破圖。
-        try:
-            with open(
-                os.path.join(
-                    app.static_folder,
-                    "placeholder.jpg"
-                ),
-                "rb"
-            ) as file:
-                return Response(
-                    file.read(),
-                    status=200,
-                    content_type="image/jpeg"
+        response.raise_for_status()
+
+        photo_uri = (
+            response
+            .json()
+            .get(
+                "photoUri"
+            )
+        )
+
+        if not photo_uri:
+
+            return redirect(
+                "/static/placeholder.jpg",
+                code=302
+            )
+
+        parsed = urlparse(
+            photo_uri
+        )
+
+        hostname = (
+            parsed.hostname
+            or ""
+        ).lower()
+
+        # 防止 open redirect。
+        #
+        # 只接受 Google 圖片 CDN。
+
+        if (
+            parsed.scheme
+            !=
+            "https"
+
+            or not (
+
+                hostname
+                ==
+                "googleusercontent.com"
+
+                or
+
+                hostname.endswith(
+                    ".googleusercontent.com"
                 )
-        except OSError:
-            return jsonify({
-                "error": "圖片服務暫時不可用"
-            }), 502
+            )
+        ):
+
+            logging.warning(
+                "Unexpected photo host rejected: %s",
+                hostname
+            )
+
+            return redirect(
+                "/static/placeholder.jpg",
+                code=302
+            )
+
+        result = redirect(
+            photo_uri,
+            code=302
+        )
+
+        result.headers[
+            "Cache-Control"
+        ] = (
+            "private, max-age=300"
+        )
+
+        return result
+
+    except (
+        requests.RequestException,
+        ValueError
+    ):
+
+        logging.exception(
+            "Place Photo failed"
+        )
+
+        return redirect(
+            "/static/placeholder.jpg",
+            code=302
+        )
 
 
-def build_search_points(
+# =========================
+# 5 點搜尋座標
+# =========================
+
+def search_points(
     lat,
     lng,
     radius
 ):
-    offset_meters = (
+
+    offset = (
         radius
-        * SEARCH_POINT_OFFSET_RATIO
+        *
+        0.45
     )
 
     lat_delta = (
-        offset_meters
-        / 111320.0
+        offset
+        /
+        111320.0
     )
 
-    cos_lat = math.cos(
-        math.radians(lat)
-    )
     cos_lat = max(
-        abs(cos_lat),
+
+        abs(
+            math.cos(
+                math.radians(
+                    lat
+                )
+            )
+        ),
+
         0.01
     )
 
     lng_delta = (
-        offset_meters
-        / (
+        offset
+        /
+        (
             111320.0
-            * cos_lat
+            *
+            cos_lat
         )
     )
 
     return [
-        (lat, lng),
-        (lat + lat_delta, lng),
-        (lat - lat_delta, lng),
-        (lat, lng + lng_delta),
-        (lat, lng - lng_delta)
+
+        (
+            lat,
+            lng
+        ),
+
+        (
+            lat + lat_delta,
+            lng
+        ),
+
+        (
+            lat - lat_delta,
+            lng
+        ),
+
+        (
+            lat,
+            lng + lng_delta
+        ),
+
+        (
+            lat,
+            lng - lng_delta
+        ),
     ]
 
 
-def search_osm_places(
+# =========================
+# OSM
+# =========================
+
+def osm_search(
     lat,
     lng,
     place_type,
     radius
 ):
-    osm_places = []
 
-    osm_tags_map = {
-        "restaurant": {
-            "amenity": "restaurant"
-        },
-        "cafe": {
-            "amenity": "cafe"
-        },
-        "bar": {
-            "amenity": "bar"
-        },
-        "bakery": {
-            "shop": "bakery"
-        },
-        "meal_delivery": {
-            "amenity": "food_court"
-        },
-        "meal_takeaway": {
-            "amenity": "fast_food"
-        },
-        "amusement_park": {
-            "leisure": "amusement_park"
-        },
-        "park": {
-            "leisure": "park"
-        },
-        "museum": {
-            "tourism": "museum"
-        },
-        "movie_theater": {
-            "amenity": "cinema"
-        },
-        "bowling_alley": {
-            "leisure": "bowling_alley"
-        },
-        "shopping_mall": {
-            "shop": "mall"
-        },
-        "spa": {
-            "amenity": "spa"
-        },
-        "beauty_salon": {
-            "shop": "beauty"
-        },
-        "gym": {
-            "leisure": "fitness_centre"
-        },
-        "zoo": {
-            "tourism": "zoo"
-        },
-        "tourist_attraction": {
-            "tourism": "attraction"
-        },
-        "night_club": {
-            "amenity": "nightclub"
-        },
-        "aquarium": {
-            "tourism": "aquarium"
-        },
-        "art_gallery": {
-            "tourism": "art_gallery"
-        },
-        "casino": {
-            "amenity": "casino"
-        }
+    tags = {
+
+        "restaurant":
+            (
+                "amenity",
+                "restaurant"
+            ),
+
+        "cafe":
+            (
+                "amenity",
+                "cafe"
+            ),
+
+        "bar":
+            (
+                "amenity",
+                "bar"
+            ),
+
+        "bakery":
+            (
+                "shop",
+                "bakery"
+            ),
+
+        "meal_delivery":
+            (
+                "amenity",
+                "food_court"
+            ),
+
+        "meal_takeaway":
+            (
+                "amenity",
+                "fast_food"
+            ),
+
+        "amusement_park":
+            (
+                "leisure",
+                "amusement_park"
+            ),
+
+        "park":
+            (
+                "leisure",
+                "park"
+            ),
+
+        "museum":
+            (
+                "tourism",
+                "museum"
+            ),
+
+        "movie_theater":
+            (
+                "amenity",
+                "cinema"
+            ),
+
+        "bowling_alley":
+            (
+                "leisure",
+                "bowling_alley"
+            ),
+
+        "shopping_mall":
+            (
+                "shop",
+                "mall"
+            ),
+
+        "spa":
+            (
+                "amenity",
+                "spa"
+            ),
+
+        "beauty_salon":
+            (
+                "shop",
+                "beauty"
+            ),
+
+        "gym":
+            (
+                "leisure",
+                "fitness_centre"
+            ),
+
+        "zoo":
+            (
+                "tourism",
+                "zoo"
+            ),
+
+        "tourist_attraction":
+            (
+                "tourism",
+                "attraction"
+            ),
+
+        "night_club":
+            (
+                "amenity",
+                "nightclub"
+            ),
     }
 
-    osm_tag = osm_tags_map.get(
+    if (
         place_type
+        not in tags
+    ):
+        return []
+
+    key, value = (
+        tags[
+            place_type
+        ]
     )
 
-    if not osm_tag:
-        return osm_places
+    query = f"""
+    [out:json];
 
-    osm_key = next(
-        iter(osm_tag)
-    )
-    osm_value = osm_tag[
-        osm_key
-    ]
+    (
+      node["{key}"="{value}"]
+      (around:{radius},{lat},{lng});
 
-    overpass_query = f"""
-        [out:json];
-        (
-          node["{osm_key}"="{osm_value}"](around:{radius},{lat},{lng});
-          way["{osm_key}"="{osm_value}"](around:{radius},{lat},{lng});
-          relation["{osm_key}"="{osm_value}"](around:{radius},{lat},{lng});
-        );
-        out center;
+      way["{key}"="{value}"]
+      (around:{radius},{lat},{lng});
+
+      relation["{key}"="{value}"]
+      (around:{radius},{lat},{lng});
+    );
+
+    out center;
     """
 
     try:
+
         response = requests.post(
-            OVERPASS_API_BASE_URL,
-            data=overpass_query,
-            timeout=REQUEST_TIMEOUT
+            OVERPASS_URL,
+
+            data=
+                query,
+
+            timeout=
+                REQUEST_TIMEOUT,
         )
+
         response.raise_for_status()
-        osm_data = response.json()
 
-        for element in osm_data.get(
-            'elements',
-            []
+        data = (
+            response.json()
+        )
+
+    except (
+        requests.RequestException,
+        ValueError
+    ):
+
+        logging.exception(
+            "OSM Overpass failed"
+        )
+
+        return []
+
+    output = []
+
+    for element in data.get(
+        "elements",
+        []
+    ):
+
+        item_tags = (
+            element.get(
+                "tags"
+            )
+            or {}
+        )
+
+        center = (
+            element.get(
+                "center"
+            )
+            or {}
+        )
+
+        place_lat = element.get(
+            "lat",
+            center.get(
+                "lat"
+            )
+        )
+
+        place_lng = element.get(
+            "lon",
+            center.get(
+                "lon"
+            )
+        )
+
+        if (
+            place_lat is None
+            or place_lng is None
         ):
-            tags = (
-                element.get('tags')
-                or {}
+            continue
+
+        name = (
+            item_tags.get(
+                "name",
+                "N/A"
             )
-            center = (
-                element.get('center')
-                or {}
-            )
+        )
 
-            element_lat = (
-                element.get('lat')
-            )
-            element_lng = (
-                element.get('lon')
-            )
+        if (
+            name == "N/A"
 
-            if element_lat is None:
-                element_lat = (
-                    center.get('lat')
-                )
+            and place_type not in {
+                "park",
+                "tourist_attraction"
+            }
+        ):
+            continue
 
-            if element_lng is None:
-                element_lng = (
-                    center.get('lon')
-                )
+        address = osm_address(
+            item_tags
+        )
 
-            if (
-                element_lat is None
-                or element_lng is None
-            ):
-                continue
+        output.append({
 
-            name = tags.get(
-                'name',
-                'N/A'
-            )
+            "id":
+                f"osm-{element['id']}",
 
-            if (
-                name == 'N/A'
-                and place_type not in [
-                    "park",
-                    "tourist_attraction"
-                ]
-            ):
-                continue
+            "osm_id":
+                element[
+                    "id"
+                ],
 
-            address = build_osm_address(
-                tags
-            )
+            "name":
+                name,
 
-            osm_places.append({
-                "id": (
-                    f"osm-{element['id']}"
-                ),
-                "osm_id": element['id'],
-                "name": name,
-                "formatted_address": address,
-                "vicinity": address,
-                "latitude": element_lat,
-                "longitude": element_lng,
-                "source": "OSM",
-                "distance": calculate_distance(
+            "formatted_address":
+                address,
+
+            "vicinity":
+                address,
+
+            "latitude":
+                place_lat,
+
+            "longitude":
+                place_lng,
+
+            "source":
+                "OSM",
+
+            "distance":
+                distance_m(
                     lat,
                     lng,
-                    element_lat,
-                    element_lng
+
+                    place_lat,
+                    place_lng
                 ),
-                "photo_url": (
-                    "/static/placeholder.jpg"
-                ),
-                "url": (
+
+            "photo_url":
+                "/static/placeholder.jpg",
+
+            "url":
+                (
                     "https://www.openstreetmap.org/"
-                    f"?mlat={element_lat}"
-                    f"&mlon={element_lng}"
+                    f"?mlat={place_lat}"
+                    f"&mlon={place_lng}"
                     "&zoom=18"
                 ),
-                "food_search_url": (
-                    "https://www.google.com/search?q="
-                    f"{quote_plus(name)}"
-                )
-            })
+        })
 
-    except requests.exceptions.RequestException as e:
-        logging.error(
-            "OSM Overpass API 搜尋失敗: %s",
-            e
-        )
-    except (
-        KeyError,
-        TypeError,
-        ValueError
-    ) as e:
-        logging.error(
-            "OSM 資料處理失敗: %s",
-            e
-        )
-
-    return osm_places
+    return output
 
 
-def build_osm_address(tags):
-    if tags.get('addr:full'):
+def osm_address(
+    tags
+):
+
+    if tags.get(
+        "addr:full"
+    ):
+
         return (
-            tags['addr:full'].strip()
+            tags[
+                "addr:full"
+            ].strip()
         )
 
-    parts = []
+    parts = [
 
-    if tags.get('addr:city'):
-        parts.append(
-            tags['addr:city']
+        tags[key]
+
+        for key in (
+            "addr:city",
+            "addr:district"
         )
 
-    if tags.get('addr:district'):
-        parts.append(
-            tags['addr:district']
+        if tags.get(
+            key
         )
+    ]
 
     street = tags.get(
-        'addr:street'
+        "addr:street"
     )
-    house_number = tags.get(
-        'addr:housenumber'
+
+    number = tags.get(
+        "addr:housenumber"
     )
 
     if street:
-        if house_number:
-            parts.append(
-                f"{street} {house_number}"
-            )
-        else:
-            parts.append(
-                street
-            )
 
-    if (
-        not parts
-        and tags.get('addr:housename')
-    ):
         parts.append(
-            tags['addr:housename']
+            (
+                f"{street} {number}"
+                if number
+                else street
+            )
         )
 
-    return (
-        ", ".join(parts)
-        if parts
-        else "無地址資訊"
-    )
+    if parts:
+
+        return ", ".join(
+            parts
+        )
+
+    return "無地址資訊"
 
 
-def make_unique_key(place):
+# =========================
+# 去重
+# =========================
+
+def unique_key(
+    place
+):
+
     if (
-        place.get('source') == 'Google'
-        and place.get('id')
-    ):
-        return (
-            'google',
-            place['id']
-        )
-
-    name = (
-        place.get('name')
-        or ''
-    ).lower().strip()
-
-    address = (
         place.get(
-            'formatted_address'
-        )
-        or place.get('vicinity')
-        or ''
-    ).lower().strip()
+            "source"
+        ) == "Google"
 
-    lat = float(
-        place.get('latitude')
-    )
-    lng = float(
-        place.get('longitude')
-    )
+        and
+
+        place.get(
+            "id"
+        )
+    ):
+
+        return (
+            "google",
+            place[
+                "id"
+            ]
+        )
 
     return (
-        name,
-        address,
-        round(lat, 5),
-        round(lng, 5)
+
+        (
+            place.get(
+                "name"
+            )
+            or ""
+        )
+        .lower()
+        .strip(),
+
+        (
+            place.get(
+                "formatted_address"
+            )
+            or ""
+        )
+        .lower()
+        .strip(),
+
+        round(
+            float(
+                place[
+                    "latitude"
+                ]
+            ),
+            5
+        ),
+
+        round(
+            float(
+                place[
+                    "longitude"
+                ]
+            ),
+            5
+        ),
     )
 
 
-def calculate_distance(
+# =========================
+# 距離
+# =========================
+
+def distance_m(
     lat1,
     lon1,
     lat2,
     lon2
 ):
-    earth_radius = 6371000
 
-    phi1 = math.radians(
+    earth_radius = (
+        6371000
+    )
+
+    p1 = math.radians(
         lat1
     )
-    phi2 = math.radians(
+
+    p2 = math.radians(
         lat2
     )
 
-    delta_phi = math.radians(
+    delta_lat = math.radians(
         lat2 - lat1
     )
 
-    delta_lambda = math.radians(
+    delta_lon = math.radians(
         lon2 - lon1
     )
 
     a = (
-        math.sin(
-            delta_phi / 2
-        ) ** 2
-        + math.cos(phi1)
-        * math.cos(phi2)
-        * math.sin(
-            delta_lambda / 2
-        ) ** 2
-    )
 
-    c = 2 * math.atan2(
-        math.sqrt(a),
-        math.sqrt(1 - a)
+        math.sin(
+            delta_lat / 2
+        ) ** 2
+
+        +
+
+        math.cos(
+            p1
+        )
+
+        *
+
+        math.cos(
+            p2
+        )
+
+        *
+
+        math.sin(
+            delta_lon / 2
+        ) ** 2
     )
 
     return (
+
         earth_radius
-        * c
-    )
+        *
+        2
+        *
+        math.atan2(
 
+            math.sqrt(
+                a
+            ),
 
-if __name__ == '__main__':
-    port = int(
-        os.getenv(
-            "PORT",
-            "5031"
+            math.sqrt(
+                1 - a
+            )
         )
     )
 
+
+if __name__ == "__main__":
+
     app.run(
-        host="0.0.0.0",
-        port=port
+
+        host=
+            "0.0.0.0",
+
+        port=int(
+            os.getenv(
+                "PORT",
+                "5031"
+            )
+        ),
     )
