@@ -2,21 +2,26 @@
   box-sizing: border-box;
 }
 
+
 html {
   scroll-behavior: smooth;
 }
 
+
 :root {
 
   --bg: #f5f7fa;
+
   --card: #ffffff;
 
   --text: #1f2937;
+
   --muted: #6b7280;
 
   --line: #e5e7eb;
 
   --primary: #2563eb;
+
   --primary-hover: #1d4ed8;
 
   --shadow:
@@ -27,6 +32,7 @@ html {
       0,
       0.07
     );
+
 }
 
 
@@ -48,18 +54,25 @@ body {
     "Microsoft JhengHei",
     Arial,
     sans-serif;
+
 }
 
 
 a {
-  color: #1d4ed8;
+
+  color:
+    #1d4ed8;
+
 }
 
 
 button,
 input,
 select {
-  font: inherit;
+
+  font:
+    inherit;
+
 }
 
 
@@ -78,6 +91,7 @@ select {
 
   padding:
     28px 0 48px;
+
 }
 
 
@@ -95,12 +109,15 @@ h1 {
 
   margin:
     0 0 22px;
+
 }
 
 
 h2 {
+
   margin:
     0 0 12px;
+
 }
 
 
@@ -124,12 +141,15 @@ section {
 
   box-shadow:
     var(--shadow);
+
 }
 
 
 .hidden-section {
+
   display:
     none !important;
+
 }
 
 
@@ -152,6 +172,7 @@ section {
 
   text-align:
     center;
+
 }
 
 
@@ -162,6 +183,7 @@ section {
 
   background:
     #dbeafe;
+
 }
 
 
@@ -172,6 +194,7 @@ section {
 
   background:
     #dcfce7;
+
 }
 
 
@@ -182,6 +205,7 @@ section {
 
   background:
     #fef3c7;
+
 }
 
 
@@ -192,6 +216,7 @@ section {
 
   background:
     #fee2e2;
+
 }
 
 
@@ -210,6 +235,7 @@ section {
 
   font-weight:
     700;
+
 }
 
 
@@ -238,6 +264,7 @@ section {
 
   text-decoration:
     none;
+
 }
 
 
@@ -246,6 +273,7 @@ section {
 
   background:
     var(--primary);
+
 }
 
 
@@ -255,6 +283,7 @@ section {
 
   background:
     var(--primary-hover);
+
 }
 
 
@@ -271,6 +300,7 @@ section {
 
   color:
     var(--text);
+
 }
 
 
@@ -298,8 +328,54 @@ select {
 
   background:
     #ffffff;
+
 }
 
+
+/* =========================
+   營業中 checkbox
+   ========================= */
+
+.open-now-filter {
+
+  display:
+    inline-flex;
+
+  align-items:
+    center;
+
+  gap:
+    8px;
+
+  margin:
+    8px 0 6px;
+
+  font-weight:
+    700;
+
+  cursor:
+    pointer;
+
+}
+
+
+.open-now-filter input {
+
+  width:
+    18px;
+
+  height:
+    18px;
+
+  accent-color:
+    var(--primary);
+
+}
+
+
+/* =========================
+   搜尋距離
+   ========================= */
 
 .range-container {
 
@@ -322,12 +398,15 @@ select {
 
   margin:
     14px 0;
+
 }
 
 
 #searchRadius {
+
   width:
     100%;
+
 }
 
 
@@ -338,8 +417,13 @@ select {
 
   font-weight:
     700;
+
 }
 
+
+/* =========================
+   搜尋結果
+   ========================= */
 
 .results-heading-row {
 
@@ -357,6 +441,7 @@ select {
 
   margin-bottom:
     12px;
+
 }
 
 
@@ -370,6 +455,7 @@ select {
 
   font-size:
     0.93rem;
+
 }
 
 
@@ -386,6 +472,7 @@ select {
 
   margin:
     14px 0 10px;
+
 }
 
 
@@ -402,18 +489,15 @@ select {
 
   font-weight:
     700;
+
 }
 
 
-/*
- * 電腦版
- *
- * 5 欄
- * ×
- * 2 列
- *
- * = 每頁 10 家
- */
+/* =========================
+   電腦：
+   5 欄 × 2 排
+   每頁 10 家
+   ========================= */
 
 .places-grid {
 
@@ -431,6 +515,7 @@ select {
 
   gap:
     14px;
+
 }
 
 
@@ -460,6 +545,7 @@ select {
       0,
       0.055
     );
+
 }
 
 
@@ -479,6 +565,7 @@ select {
 
   padding:
     12px 12px 8px;
+
 }
 
 
@@ -495,6 +582,7 @@ select {
 
   accent-color:
     var(--primary);
+
 }
 
 
@@ -517,6 +605,7 @@ select {
 
   cursor:
     pointer;
+
 }
 
 
@@ -536,6 +625,7 @@ select {
 
   background:
     #e5e7eb;
+
 }
 
 
@@ -543,6 +633,7 @@ select {
 
   padding:
     10px 12px 12px;
+
 }
 
 
@@ -550,6 +641,7 @@ select {
 
   margin:
     0 0 7px;
+
 }
 
 
@@ -569,6 +661,7 @@ select {
 
   overflow-wrap:
     anywhere;
+
 }
 
 
@@ -579,14 +672,21 @@ select {
 
   line-height:
     1.35;
+
 }
 
 
 .place-link-row a {
+
   overflow-wrap:
     anywhere;
+
 }
 
+
+/* =========================
+   分頁
+   ========================= */
 
 .pagination {
 
@@ -604,6 +704,7 @@ select {
 
   margin-top:
     22px;
+
 }
 
 
@@ -620,6 +721,7 @@ select {
 
   background:
     var(--primary);
+
 }
 
 
@@ -630,6 +732,7 @@ select {
 
   opacity:
     0.42;
+
 }
 
 
@@ -643,8 +746,13 @@ select {
 
   font-weight:
     800;
+
 }
 
+
+/* =========================
+   轉盤
+   ========================= */
 
 .wheel-section {
 
@@ -653,6 +761,7 @@ select {
 
   scroll-margin-top:
     16px;
+
 }
 
 
@@ -669,6 +778,7 @@ select {
 
   margin:
     28px auto 18px;
+
 }
 
 
@@ -708,6 +818,7 @@ select {
   border-top:
     28px solid
     #ef4444;
+
 }
 
 
@@ -724,6 +835,7 @@ select {
 
   margin:
     auto;
+
 }
 
 
@@ -737,6 +849,7 @@ select {
 
   font-weight:
     800;
+
 }
 
 
@@ -744,21 +857,20 @@ select {
 
   margin-top:
     8px;
+
 }
 
 
-/*
- * 手機版
- *
- * 單欄
- *
- * JS 每頁只顯示 5 家
- */
+/* =========================
+   手機
+   每頁 5 家
+   ========================= */
 
 @media (
   max-width:
     768px
 ) {
+
 
   .container {
 
@@ -767,6 +879,7 @@ select {
 
     padding:
       12px;
+
   }
 
 
@@ -780,6 +893,7 @@ select {
 
     border-radius:
       13px;
+
   }
 
 
@@ -790,6 +904,7 @@ select {
 
     margin-bottom:
       14px;
+
   }
 
 
@@ -797,6 +912,7 @@ select {
 
     font-size:
       1.25rem;
+
   }
 
 
@@ -805,6 +921,7 @@ select {
 
     font-size:
       16px;
+
   }
 
 
@@ -813,6 +930,21 @@ select {
 
     width:
       100%;
+
+  }
+
+
+  .open-now-filter {
+
+    display:
+      flex;
+
+    width:
+      100%;
+
+    padding:
+      8px 0;
+
   }
 
 
@@ -823,6 +955,7 @@ select {
 
     gap:
       7px;
+
   }
 
 
@@ -830,6 +963,7 @@ select {
 
     min-width:
       0;
+
   }
 
 
@@ -837,6 +971,7 @@ select {
 
     display:
       block;
+
   }
 
 
@@ -847,6 +982,7 @@ select {
 
     margin-top:
       12px;
+
   }
 
 
@@ -860,6 +996,7 @@ select {
 
     gap:
       7px;
+
   }
 
 
@@ -870,6 +1007,7 @@ select {
 
     gap:
       12px;
+
   }
 
 
@@ -877,6 +1015,7 @@ select {
 
     min-height:
       0;
+
   }
 
 
@@ -884,6 +1023,7 @@ select {
 
     font-size:
       1.05rem;
+
   }
 
 
@@ -891,6 +1031,7 @@ select {
 
     aspect-ratio:
       16 / 9;
+
   }
 
 
@@ -901,6 +1042,7 @@ select {
 
     font-size:
       0.94rem;
+
   }
 
 
@@ -908,6 +1050,7 @@ select {
 
     font-size:
       0.94rem;
+
   }
 
 
@@ -923,6 +1066,7 @@ select {
 
     gap:
       8px;
+
   }
 
 
@@ -933,6 +1077,7 @@ select {
 
     padding:
       9px 8px;
+
   }
 
 
@@ -943,6 +1088,7 @@ select {
 
     font-size:
       0.9rem;
+
   }
 
 
@@ -953,6 +1099,8 @@ select {
         360px,
         100%
       );
+
   }
+
 
 }
