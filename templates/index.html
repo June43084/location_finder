@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="zh-TW">
 
 <head>
@@ -21,13 +22,17 @@
 
 </head>
 
+
 <body>
 
+
 <main class="container">
+
 
   <h1>
     吃喝玩樂搜尋器
   </h1>
+
 
   <div
     id="message"
@@ -38,13 +43,16 @@
 
   <section>
 
+
     <h2>
       我的位置
     </h2>
 
+
     <p id="currentLocationDisplay">
       正在獲取您的位置...
     </p>
+
 
     <button
       id="getLocationBtn"
@@ -60,15 +68,19 @@
       class="hidden-section"
     >
 
+
       <p>
         或輸入您的地址：
       </p>
+
 
       <input
         id="addressInput"
         type="text"
         placeholder="例如：台北市信義區市府路1號"
+        autocomplete="street-address"
       >
+
 
       <button
         id="geocodeAddressBtn"
@@ -78,7 +90,9 @@
         轉換地址
       </button>
 
+
     </div>
+
 
   </section>
 
@@ -88,9 +102,11 @@
     class="hidden-section"
   >
 
+
     <h2>
       搜尋附近地點
     </h2>
+
 
     <p>
       請選擇您想搜尋的「吃喝玩樂」類型：
@@ -99,95 +115,136 @@
 
     <select id="searchType">
 
+
       <optgroup label="🍽️ 吃喝">
+
 
         <option value="restaurant">
           餐廳
         </option>
 
+
         <option value="cafe">
           咖啡廳
         </option>
+
 
         <option value="bar">
           酒吧
         </option>
 
+
         <option value="bakery">
           麵包店
         </option>
+
 
         <option value="meal_delivery">
           餐點外送
         </option>
 
+
         <option value="meal_takeaway">
           餐點外帶
         </option>
+
 
       </optgroup>
 
 
       <optgroup label="🎡 玩樂">
 
+
         <option value="amusement_park">
           遊樂園
         </option>
+
 
         <option value="park">
           公園
         </option>
 
+
         <option value="museum">
           博物館
         </option>
+
 
         <option value="movie_theater">
           電影院
         </option>
 
+
         <option value="bowling_alley">
           保齡球館
         </option>
+
 
         <option value="shopping_mall">
           購物中心
         </option>
 
+
         <option value="spa">
           SPA
         </option>
+
 
         <option value="beauty_salon">
           美容院
         </option>
 
+
         <option value="gym">
           健身房
         </option>
+
 
         <option value="zoo">
           動物園
         </option>
 
+
         <option value="tourist_attraction">
           觀光景點
         </option>
+
 
         <option value="night_club">
           KTV / 夜店
         </option>
 
+
       </optgroup>
+
 
     </select>
 
 
+    <label class="open-now-filter">
+
+
+      <input
+        id="openNowOnly"
+        type="checkbox"
+      >
+
+
+      <span>
+        只看目前營業中
+      </span>
+
+
+    </label>
+
+
     <div class="range-container">
+
 
       <label for="searchRadius">
         搜尋範圍
       </label>
+
 
       <input
         id="searchRadius"
@@ -198,15 +255,20 @@
         step="100"
       >
 
+
       <div class="range-value">
+
 
         <span id="radiusValue">
           5000
         </span>
 
+
         公尺
 
+
       </div>
+
 
     </div>
 
@@ -219,26 +281,33 @@
       開始搜尋
     </button>
 
+
   </section>
 
 
   <section id="resultsContainer">
 
+
     <div class="results-heading-row">
 
+
       <div>
+
 
         <h2>
           搜尋結果
         </h2>
 
+
         <p class="result-note">
-          **店家圖片可能載入較久
+          手機每頁 5 家；電腦每頁 10 家（5 欄 × 2 列）。
         </p>
+
 
         <p class="result-note">
           無可用店家圖片時會顯示預設鹿圖。
         </p>
+
 
       </div>
 
@@ -251,6 +320,7 @@
         🎡 直接前往轉盤
       </a>
 
+
     </div>
 
 
@@ -258,6 +328,7 @@
       id="placesActions"
       class="places-actions hidden-section"
     >
+
 
       <button
         id="selectAllBtn"
@@ -285,6 +356,7 @@
         🎯 更新並前往轉盤
       </button>
 
+
     </div>
 
 
@@ -303,7 +375,9 @@
     <nav
       id="pagination"
       class="pagination hidden-section"
+      aria-label="搜尋結果分頁"
     >
+
 
       <button
         id="prevPageBtn"
@@ -330,7 +404,9 @@
         下一頁 →
       </button>
 
+
     </nav>
+
 
   </section>
 
@@ -341,6 +417,7 @@
     style="display:none;"
   >
 
+
     <h2>
       🎡 轉盤抽選
     </h2>
@@ -348,13 +425,16 @@
 
     <div class="wheel-wrapper">
 
+
       <div class="pointer"></div>
+
 
       <canvas
         id="wheelCanvas"
         width="400"
         height="400"
       ></canvas>
+
 
     </div>
 
@@ -383,7 +463,9 @@
       ↑ 回到搜尋結果
     </a>
 
+
   </section>
+
 
 </main>
 
@@ -397,25 +479,30 @@ window.setupWheelWithPlaces = function (
   names
 ) {
 
+
   const canvas =
     document.getElementById(
       'wheelCanvas'
     );
+
 
   const spinBtn =
     document.getElementById(
       'spinBtn'
     );
 
+
   const result =
     document.getElementById(
       'result'
     );
 
+
   const section =
     document.getElementById(
       'wheelSection'
     );
+
 
   const jumpBtn =
     document.getElementById(
@@ -429,7 +516,9 @@ window.setupWheelWithPlaces = function (
     !result ||
     !section
   ) {
+
     return;
+
   }
 
 
@@ -437,11 +526,15 @@ window.setupWheelWithPlaces = function (
     Array.isArray(
       names
     )
+
       ?
+
       names.filter(
         Boolean
       )
+
       :
+
       [];
 
 
@@ -449,23 +542,34 @@ window.setupWheelWithPlaces = function (
     !prizes.length
   ) {
 
+
     section.style.display =
       'none';
 
-    jumpBtn?.classList.add(
-      'hidden-section'
-    );
+
+    jumpBtn
+      ?.
+      classList
+      .add(
+        'hidden-section'
+      );
+
 
     return;
+
   }
 
 
   section.style.display =
     'block';
 
-  jumpBtn?.classList.remove(
-    'hidden-section'
-  );
+
+  jumpBtn
+    ?.
+    classList
+    .remove(
+      'hidden-section'
+    );
 
 
   const ctx =
@@ -477,29 +581,43 @@ window.setupWheelWithPlaces = function (
   const colors = [
 
     '#f94144',
+
     '#f3722c',
+
     '#f8961e',
+
     '#43aa8b',
+
     '#577590',
+
     '#277da1'
 
   ];
 
 
   const angle =
+
     2 *
-    Math.PI /
+
+    Math.PI
+
+    /
+
     prizes.length;
 
 
-  let rotation = 0;
+  let rotation =
+    0;
 
-  let spinning = false;
+
+  let spinning =
+    false;
 
 
   function draw(
     rotate = 0
   ) {
+
 
     ctx.clearRect(
       0,
@@ -511,14 +629,17 @@ window.setupWheelWithPlaces = function (
 
     ctx.save();
 
+
     ctx.translate(
       200,
       200
     );
 
+
     ctx.rotate(
       rotate
     );
+
 
     ctx.translate(
       -200,
@@ -532,41 +653,57 @@ window.setupWheelWithPlaces = function (
         index
       ) => {
 
+
         const start =
+
           index *
+
           angle;
 
 
         ctx.beginPath();
+
 
         ctx.moveTo(
           200,
           200
         );
 
+
         ctx.arc(
+
           200,
+
           200,
+
           180,
 
           start,
+
           start + angle
+
         );
 
 
         ctx.fillStyle =
+
           colors[
+
             index %
+
             colors.length
+
           ];
 
 
         ctx.fill();
 
+
         ctx.stroke();
 
 
         ctx.save();
+
 
         ctx.translate(
           200,
@@ -575,53 +712,77 @@ window.setupWheelWithPlaces = function (
 
 
         ctx.rotate(
+
           start +
+
           angle / 2
+
         );
 
 
         ctx.textAlign =
           'right';
 
+
         ctx.fillStyle =
           '#fff';
 
 
-        ctx.font =
+        if (
+          prizes.length > 30
+        ) {
+
+          ctx.font =
+            '10px Arial';
+
+        }
+
+        else if (
+          prizes.length > 18
+        ) {
+
+          ctx.font =
+            '11px Arial';
+
+        }
+
+        else {
+
+          ctx.font =
+            '14px Arial';
+
+        }
+
+
+        const maxChars =
 
           prizes.length > 30
+
             ?
-            '10px Arial'
+
+            6
 
             :
 
-          prizes.length > 18
-            ?
-            '11px Arial'
-
-            :
-            '14px Arial';
+            10;
 
 
         ctx.fillText(
 
           name.slice(
             0,
-
-            prizes.length > 30
-              ?
-              6
-              :
-              10
+            maxChars
           ),
 
           160,
 
           5
+
         );
 
 
         ctx.restore();
+
 
       }
     );
@@ -629,23 +790,30 @@ window.setupWheelWithPlaces = function (
 
     ctx.restore();
 
+
   }
 
 
   spinBtn.onclick =
     () => {
 
+
       if (
         spinning
       ) {
+
         return;
+
       }
 
 
-      spinning = true;
+      spinning =
+        true;
+
 
       spinBtn.disabled =
         true;
+
 
       result.textContent =
         '轉動中...';
@@ -657,7 +825,9 @@ window.setupWheelWithPlaces = function (
 
       const end =
 
-        start +
+        start
+
+        +
 
         (
           5 +
@@ -668,6 +838,7 @@ window.setupWheelWithPlaces = function (
         *
 
         2 *
+
         Math.PI;
 
 
@@ -679,23 +850,30 @@ window.setupWheelWithPlaces = function (
         now
       ) {
 
+
         const progress =
+
           Math.min(
 
             (
               now -
               started
             )
+
             /
+
             5000,
 
             1
+
           );
 
 
         const ease =
 
-          1 -
+          1
+
+          -
 
           Math.pow(
             1 - progress,
@@ -705,7 +883,9 @@ window.setupWheelWithPlaces = function (
 
         rotation =
 
-          start +
+          start
+
+          +
 
           (
             end -
@@ -726,18 +906,23 @@ window.setupWheelWithPlaces = function (
           progress < 1
         ) {
 
+
           requestAnimationFrame(
             animate
           );
 
+
           return;
+
 
         }
 
 
         const normalized =
 
-          rotation %
+          rotation
+
+          %
 
           (
             2 *
@@ -777,8 +962,11 @@ window.setupWheelWithPlaces = function (
           prizes[
 
             Math.floor(
+
               pointer /
+
               angle
+
             )
 
             %
@@ -790,7 +978,10 @@ window.setupWheelWithPlaces = function (
 
         const url =
 
-          window.placeUrlMap?.[
+          window
+          .placeUrlMap
+          ?.
+          [
             winner
           ];
 
@@ -803,6 +994,7 @@ window.setupWheelWithPlaces = function (
           url
         ) {
 
+
           const link =
             document.createElement(
               'a'
@@ -812,11 +1004,14 @@ window.setupWheelWithPlaces = function (
           link.href =
             url;
 
+
           link.target =
             '_blank';
 
+
           link.rel =
             'noopener noreferrer';
+
 
           link.textContent =
             winner;
@@ -827,19 +1022,27 @@ window.setupWheelWithPlaces = function (
             '！'
           );
 
-        } else {
+
+        }
+
+        else {
+
 
           result.append(
             `${winner}！`
           );
 
+
         }
 
 
-        spinning = false;
+        spinning =
+          false;
+
 
         spinBtn.disabled =
           false;
+
 
       }
 
@@ -847,6 +1050,7 @@ window.setupWheelWithPlaces = function (
       requestAnimationFrame(
         animate
       );
+
 
     };
 
@@ -856,6 +1060,7 @@ window.setupWheelWithPlaces = function (
 
 
   draw();
+
 
 };
 
