@@ -1,1131 +1,1634 @@
 const BACKEND_BASE_URL = '';
 
-let currentCoords = null;
-let currentAddress = null;
 
-let allPlaces = [];
-let allPlacesData = {};
-let selectedPlaceIds = new Set();
+let currentCoords =
+  null;
 
-let currentPage = 1;
 
-window.placeUrlMap = {};
+let allPlaces =
+  [];
 
-document.addEventListener('DOMContentLoaded', () => {
-    const updateWheelBtn = document.getElementById('updateWheelBtn');
-    const getLocationBtn = document.getElementById('getLocationBtn');
-    const searchTypeSelect = document.getElementById('searchType');
-    const searchNearbyBtn = document.getElementById('searchNearbyBtn');
 
-    const messageDiv = document.getElementById('message');
-    const placesListDiv = document.getElementById('placesList');
-    const currentLocationDisplay = document.getElementById('currentLocationDisplay');
+let selectedIds =
+  new Set();
 
-    const placeTypeSelection = document.getElementById('placeTypeSelection');
-    const selectAllBtn = document.getElementById('selectAllBtn');
-    const deselectAllBtn = document.getElementById('deselectAllBtn');
-    const placesActionsDiv = document.getElementById('placesActions');
 
-    const manualLocationInputDiv = document.getElementById('manualLocationInput');
-    const addressInput = document.getElementById('addressInput');
-    const geocodeAddressBtn = document.getElementById('geocodeAddressBtn');
+let currentPage =
+  1;
 
-    const searchRadiusSlider = document.getElementById('searchRadius');
-    const radiusValueSpan = document.getElementById('radiusValue');
 
-    const resultsSummary = document.getElementById('resultsSummary');
+window.placeUrlMap =
+  {};
 
-    const paginationDiv = document.getElementById('pagination');
-    const prevPageBtn = document.getElementById('prevPageBtn');
-    const nextPageBtn = document.getElementById('nextPageBtn');
-    const pageInfo = document.getElementById('pageInfo');
 
-    const jumpToWheelBtn = document.getElementById('jumpToWheelBtn');
+document.addEventListener(
+  'DOMContentLoaded',
+  () => {
 
-    function displayMessage(msg, type = 'info') {
-        if (!messageDiv) return;
 
-        messageDiv.textContent = msg;
-        messageDiv.className = `message ${type}`;
-        messageDiv.style.display = 'block';
-    }
-
-    function getPageSize() {
-        return window.matchMedia('(max-width: 768px)').matches ? 5 : 10;
-    }
-
-    function getTotalPages() {
-        if (allPlaces.length === 0) return 1;
-
-        return Math.ceil(allPlaces.length / getPageSize());
-    }
-
-    function clampCurrentPage() {
-        currentPage = Math.max(
-            1,
-            Math.min(currentPage, getTotalPages())
+    const $ =
+      id =>
+        document.getElementById(
+          id
         );
+
+
+    const message =
+      $('message');
+
+
+    const locationText =
+      $('currentLocationDisplay');
+
+
+    const manualBox =
+      $('manualLocationInput');
+
+
+    const typeSection =
+      $('placeTypeSelection');
+
+
+    const addressInput =
+      $('addressInput');
+
+
+    const searchType =
+      $('searchType');
+
+
+    const radius =
+      $('searchRadius');
+
+
+    const radiusValue =
+      $('radiusValue');
+
+
+    const placesList =
+      $('placesList');
+
+
+    const actions =
+      $('placesActions');
+
+
+    const summary =
+      $('resultsSummary');
+
+
+    const pagination =
+      $('pagination');
+
+
+    const prevBtn =
+      $('prevPageBtn');
+
+
+    const nextBtn =
+      $('nextPageBtn');
+
+
+    const pageInfo =
+      $('pageInfo');
+
+
+    const jumpBtn =
+      $('jumpToWheelBtn');
+
+
+    function show(
+      text,
+      type = 'info'
+    ) {
+
+      message.textContent =
+        text;
+
+
+      message.className =
+        `message ${type}`;
+
+
+      message.style.display =
+        'block';
+
     }
 
-    function getPlaceId(place, index) {
-        if (place.id) return String(place.id);
 
-        if (place.osm_id) {
-            return `osm-${place.osm_id}`;
-        }
+    /*
+     * 手機：
+     * 5 家 / 頁
+     *
+     * 電腦：
+     * 10 家 / 頁
+     * =
+     * 5 欄 × 2 列
+     */
 
-        return [
-            'fallback',
-            index,
-            place.name || 'unknown',
-            place.latitude ?? '',
-            place.longitude ?? ''
-        ].join('-');
+    function pageSize() {
+
+      return matchMedia(
+        '(max-width: 768px)'
+      ).matches
+
+        ?
+
+        5
+
+        :
+
+        10;
+
     }
 
-    function rebuildPlaceMaps(places) {
-        allPlacesData = {};
-        window.placeUrlMap = {};
 
-        places.forEach((place, index) => {
-            const placeId = getPlaceId(place, index);
+    function totalPages() {
 
-            place._frontendId = placeId;
-            allPlacesData[placeId] = place;
+      return Math.max(
 
-            const placeName = place.name || '未命名地點';
+        1,
 
-            window.placeUrlMap[placeName] =
-                place.map_url ||
-                place.url ||
-                '';
-        });
+        Math.ceil(
+
+          allPlaces.length
+
+          /
+
+          pageSize()
+
+        )
+
+      );
+
     }
 
-    function updateWheelFromSelection() {
-        if (typeof window.setupWheelWithPlaces !== 'function') {
-            return;
-        }
 
-        const selectedNames = allPlaces
-            .filter(place => selectedPlaceIds.has(place._frontendId))
-            .map(place => place.name)
-            .filter(Boolean);
+    function idFor(
+      place,
+      index
+    ) {
 
-        window.setupWheelWithPlaces(selectedNames);
+      return String(
 
-        if (jumpToWheelBtn) {
-            jumpToWheelBtn.classList.toggle(
-                'hidden-section',
-                selectedNames.length === 0
+        place.id
+
+        ||
+
+        place.osm_id
+
+        ||
+
+        (
+          `fallback-${index}-`
+          +
+          `${place.name}-`
+          +
+          `${place.latitude}-`
+          +
+          `${place.longitude}`
+        )
+
+      );
+
+    }
+
+
+    function preparePlaces() {
+
+      window.placeUrlMap =
+        {};
+
+
+      allPlaces.forEach(
+        (
+          place,
+          index
+        ) => {
+
+
+          place._id =
+            idFor(
+              place,
+              index
             );
+
+
+          window.placeUrlMap[
+            place.name
+          ] =
+
+            place.map_url
+
+            ||
+
+            place.url
+
+            ||
+
+            '';
+
         }
+      );
+
     }
 
-    function updateResultsSummary() {
-        if (!resultsSummary) return;
 
-        if (allPlaces.length === 0) {
-            resultsSummary.textContent = '';
-            return;
-        }
+    function selectedNames() {
 
-        const pageSize = getPageSize();
+      return allPlaces
 
-        const start =
-            (currentPage - 1) *
-            pageSize +
-            1;
+        .filter(
 
-        const end = Math.min(
-            currentPage * pageSize,
-            allPlaces.length
+          place =>
+            selectedIds.has(
+              place._id
+            )
+
+        )
+
+        .map(
+
+          place =>
+            place.name
+
+        )
+
+        .filter(
+          Boolean
         );
 
-        resultsSummary.textContent =
-            `共 ${allPlaces.length} 家，目前顯示 ${start}–${end} 家，` +
-            `已勾選 ${selectedPlaceIds.size} 家`;
     }
 
-    function updatePagination() {
-        if (
-            !paginationDiv ||
-            !prevPageBtn ||
-            !nextPageBtn ||
-            !pageInfo
-        ) {
-            return;
-        }
 
-        const totalPages = getTotalPages();
+    function updateWheel() {
 
-        if (allPlaces.length <= getPageSize()) {
-            paginationDiv.classList.add('hidden-section');
-            return;
-        }
+      const names =
+        selectedNames();
 
-        paginationDiv.classList.remove('hidden-section');
 
-        pageInfo.textContent =
-            `第 ${currentPage} / ${totalPages} 頁`;
+      window
+        .setupWheelWithPlaces
+        ?.
+        (
+          names
+        );
 
-        prevPageBtn.disabled =
-            currentPage <= 1;
 
-        nextPageBtn.disabled =
-            currentPage >= totalPages;
+      jumpBtn
+        ?.
+        classList
+        .toggle(
+
+          'hidden-section',
+
+          names.length === 0
+
+        );
+
     }
 
-    function createLinkParagraph(url, text) {
-        const paragraph =
-            document.createElement('p');
 
-        paragraph.className =
-            'place-link-row';
+    function updateSummary() {
 
-        const link =
-            document.createElement('a');
+      if (
+        !allPlaces.length
+      ) {
 
-        link.href = url;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.textContent = text;
+        summary.textContent =
+          '';
 
-        paragraph.appendChild(link);
+        return;
 
-        return paragraph;
+      }
+
+
+      const size =
+        pageSize();
+
+
+      const start =
+
+        (
+          currentPage -
+          1
+        )
+
+        *
+
+        size
+
+        +
+
+        1;
+
+
+      const end =
+        Math.min(
+
+          currentPage *
+          size,
+
+          allPlaces.length
+
+        );
+
+
+      summary.textContent =
+
+        `共 ${allPlaces.length} 家，`
+
+        +
+
+        `目前顯示 ${start}–${end} 家，`
+
+        +
+
+        `已勾選 ${selectedIds.size} 家`;
+
     }
 
-    function createPlaceCard(place) {
-        const placeId =
-            place._frontendId;
 
-        const placeName =
-            place.name ||
-            '未命名地點';
+    function updatePager() {
 
-        const placeItem =
-            document.createElement('article');
+      currentPage =
+        Math.max(
 
-        placeItem.className =
-            'place-item';
+          1,
 
-        const headerRow =
-            document.createElement('div');
+          Math.min(
 
-        headerRow.className =
-            'place-card-header';
+            currentPage,
 
-        const checkbox =
-            document.createElement('input');
+            totalPages()
 
-        checkbox.type =
-            'checkbox';
+          )
 
-        checkbox.id =
-            `place-${placeId}`;
-
-        checkbox.className =
-            'place-checkbox';
-
-        checkbox.checked =
-            selectedPlaceIds.has(placeId);
-
-        checkbox.setAttribute(
-            'aria-label',
-            `選擇 ${placeName}`
         );
 
-        checkbox.addEventListener(
-            'change',
-            () => {
-                if (checkbox.checked) {
-                    selectedPlaceIds.add(
-                        placeId
-                    );
-                } else {
-                    selectedPlaceIds.delete(
-                        placeId
-                    );
-                }
 
-                updateResultsSummary();
-                updateWheelFromSelection();
-            }
+      if (
+        allPlaces.length
+        <=
+        pageSize()
+      ) {
+
+        pagination
+          .classList
+          .add(
+            'hidden-section'
+          );
+
+        return;
+
+      }
+
+
+      pagination
+        .classList
+        .remove(
+          'hidden-section'
         );
 
-        const title =
-            document.createElement('label');
 
-        title.className =
-            'place-title';
+      pageInfo.textContent =
+        `第 ${currentPage} / ${totalPages()} 頁`;
 
-        title.htmlFor =
-            checkbox.id;
 
-        title.textContent =
-            placeName;
+      prevBtn.disabled =
+        currentPage === 1;
 
-        headerRow.appendChild(
-            checkbox
+
+      nextBtn.disabled =
+        currentPage ===
+        totalPages();
+
+    }
+
+
+    function linkRow(
+      url,
+      text
+    ) {
+
+      const paragraph =
+        document.createElement(
+          'p'
         );
 
-        headerRow.appendChild(
-            title
+
+      paragraph.className =
+        'place-link-row';
+
+
+      const link =
+        document.createElement(
+          'a'
         );
 
-        const image =
-            document.createElement('img');
 
-        image.src =
-            place.photo_url ||
-            '/static/placeholder.jpg';
+      link.href =
+        url;
 
-        image.className =
-            'place-img';
 
-        image.alt =
-            `${placeName} 圖片`;
+      link.target =
+        '_blank';
 
-        image.loading =
-            'lazy';
 
-        image.decoding =
-            'async';
+      link.rel =
+        'noopener noreferrer';
 
-        image.onerror = () => {
-            if (
-                !image.src.endsWith(
-                    '/static/placeholder.jpg'
-                )
-            ) {
-                image.src =
-                    '/static/placeholder.jpg';
-            }
+
+      link.textContent =
+        text;
+
+
+      paragraph.appendChild(
+        link
+      );
+
+
+      return paragraph;
+
+    }
+
+
+    function card(
+      place
+    ) {
+
+      const article =
+        document.createElement(
+          'article'
+        );
+
+
+      article.className =
+        'place-item';
+
+
+      const header =
+        document.createElement(
+          'div'
+        );
+
+
+      header.className =
+        'place-card-header';
+
+
+      const checkbox =
+        document.createElement(
+          'input'
+        );
+
+
+      checkbox.type =
+        'checkbox';
+
+
+      checkbox.className =
+        'place-checkbox';
+
+
+      checkbox.id =
+        `place-${place._id}`;
+
+
+      checkbox.checked =
+        selectedIds.has(
+          place._id
+        );
+
+
+      const label =
+        document.createElement(
+          'label'
+        );
+
+
+      label.className =
+        'place-title';
+
+
+      label.htmlFor =
+        checkbox.id;
+
+
+      label.textContent =
+        place.name
+        ||
+        '未命名地點';
+
+
+      checkbox.onchange =
+        () => {
+
+
+          if (
+            checkbox.checked
+          ) {
+
+            selectedIds.add(
+              place._id
+            );
+
+          } else {
+
+            selectedIds.delete(
+              place._id
+            );
+
+          }
+
+
+          updateSummary();
+
+          updateWheel();
+
         };
 
-        const details =
-            document.createElement('div');
 
-        details.className =
-            'place-details';
+      header.append(
+        checkbox,
+        label
+      );
 
-        const address =
-            document.createElement('p');
 
-        address.className =
-            'place-address';
+      /*
+       * 只有目前頁面的卡片
+       * 才會建立 img 元件。
+       *
+       * 所以：
+       *
+       * 手機最多一次載 5 張
+       *
+       * 電腦最多一次載 10 張
+       */
 
-        address.textContent =
-            place.formatted_address ||
-            place.vicinity ||
-            '無地址資訊';
-
-        details.appendChild(
-            address
+      const image =
+        document.createElement(
+          'img'
         );
 
-        if (place.map_url) {
-            details.appendChild(
-                createLinkParagraph(
-                    place.map_url,
-                    '📍 Google 地圖'
-                )
-            );
-        }
 
-        if (place.url) {
-            details.appendChild(
-                createLinkParagraph(
-                    place.url,
-                    '📍 OSM 地圖'
-                )
-            );
-        }
+      image.className =
+        'place-img';
 
-        const googleSearchUrl =
-            `https://www.google.com/search?q=${encodeURIComponent(placeName)}`;
 
-        details.appendChild(
-            createLinkParagraph(
-                googleSearchUrl,
-                '🔎 Google 搜尋'
+      image.src =
+        place.photo_url
+        ||
+        '/static/placeholder.jpg';
+
+
+      image.alt =
+        `${place.name || '地點'} 圖片`;
+
+
+      image.loading =
+        'lazy';
+
+
+      image.decoding =
+        'async';
+
+
+      image.onerror =
+        () => {
+
+
+          if (
+            !image.src.endsWith(
+              '/static/placeholder.jpg'
             )
+          ) {
+
+            image.src =
+              '/static/placeholder.jpg';
+
+          }
+
+        };
+
+
+      const details =
+        document.createElement(
+          'div'
         );
 
-        placeItem.appendChild(
-            headerRow
+
+      details.className =
+        'place-details';
+
+
+      const address =
+        document.createElement(
+          'p'
         );
 
-        placeItem.appendChild(
-            image
+
+      address.className =
+        'place-address';
+
+
+      address.textContent =
+
+        place.formatted_address
+
+        ||
+
+        place.vicinity
+
+        ||
+
+        '無地址資訊';
+
+
+      details.appendChild(
+        address
+      );
+
+
+      if (
+        place.map_url
+      ) {
+
+        details.appendChild(
+
+          linkRow(
+            place.map_url,
+            '📍 Google 地圖'
+          )
+
         );
 
-        placeItem.appendChild(
-            details
+      }
+
+
+      if (
+        place.url
+      ) {
+
+        details.appendChild(
+
+          linkRow(
+            place.url,
+            '📍 OSM 地圖'
+          )
+
         );
 
-        return placeItem;
+      }
+
+
+      const googleSearchUrl =
+
+        'https://www.google.com/search?q='
+
+        +
+
+        encodeURIComponent(
+          place.name
+          ||
+          ''
+        );
+
+
+      details.appendChild(
+
+        linkRow(
+          googleSearchUrl,
+          '🔎 Google 搜尋'
+        )
+
+      );
+
+
+      article.append(
+
+        header,
+
+        image,
+
+        details
+
+      );
+
+
+      return article;
+
     }
 
-    function renderCurrentPage({
-        scrollToResults = false
-    } = {}) {
-        if (!placesListDiv) return;
 
-        clampCurrentPage();
+    function render(
+      scroll = false
+    ) {
 
-        placesListDiv.innerHTML = '';
 
-        if (allPlaces.length === 0) {
-            updateResultsSummary();
-            updatePagination();
-            return;
-        }
+      currentPage =
+        Math.max(
 
-        const pageSize =
-            getPageSize();
+          1,
 
-        const startIndex =
-            (currentPage - 1) *
-            pageSize;
+          Math.min(
 
-        const endIndex =
-            Math.min(
-                startIndex + pageSize,
-                allPlaces.length
-            );
+            currentPage,
 
-        const pagePlaces =
-            allPlaces.slice(
-                startIndex,
-                endIndex
-            );
+            totalPages()
 
-        const fragment =
-            document.createDocumentFragment();
+          )
 
-        pagePlaces.forEach(place => {
-            fragment.appendChild(
-                createPlaceCard(place)
-            );
-        });
-
-        placesListDiv.appendChild(
-            fragment
         );
 
-        updateResultsSummary();
-        updatePagination();
 
-        if (scrollToResults) {
-            const resultsContainer =
-                document.getElementById(
-                    'resultsContainer'
-                );
+      placesList.innerHTML =
+        '';
 
-            if (resultsContainer) {
-                resultsContainer.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
-            }
-        }
+
+      const size =
+        pageSize();
+
+
+      const start =
+
+        (
+          currentPage -
+          1
+        )
+
+        *
+
+        size;
+
+
+      allPlaces
+
+        .slice(
+          start,
+          start + size
+        )
+
+        .forEach(
+          place => {
+
+
+            placesList.appendChild(
+
+              card(
+                place
+              )
+
+            );
+
+          }
+        );
+
+
+      updateSummary();
+
+      updatePager();
+
+
+      if (
+        scroll
+      ) {
+
+        $('resultsContainer')
+          .scrollIntoView({
+
+            behavior:
+              'smooth',
+
+            block:
+              'start'
+
+          });
+
+      }
+
     }
 
-    function resetResults() {
-        allPlaces = [];
-        allPlacesData = {};
 
-        selectedPlaceIds =
-            new Set();
+    function reset() {
 
-        currentPage = 1;
+      allPlaces =
+        [];
 
-        window.placeUrlMap = {};
 
-        if (placesListDiv) {
-            placesListDiv.innerHTML = '';
-        }
+      selectedIds =
+        new Set();
 
-        if (placesActionsDiv) {
-            placesActionsDiv.classList.add(
-                'hidden-section'
-            );
-        }
 
-        if (paginationDiv) {
-            paginationDiv.classList.add(
-                'hidden-section'
-            );
-        }
+      currentPage =
+        1;
 
-        if (jumpToWheelBtn) {
-            jumpToWheelBtn.classList.add(
-                'hidden-section'
-            );
-        }
 
-        updateResultsSummary();
+      placesList.innerHTML =
+        '';
+
+
+      actions
+        .classList
+        .add(
+          'hidden-section'
+        );
+
+
+      pagination
+        .classList
+        .add(
+          'hidden-section'
+        );
+
+
+      jumpBtn
+        .classList
+        .add(
+          'hidden-section'
+        );
+
+
+      summary.textContent =
+        '';
+
+
+      window.placeUrlMap =
+        {};
+
+
+      window
+        .setupWheelWithPlaces
+        ?.
+        (
+          []
+        );
+
+    }
+
+
+    $('selectAllBtn').onclick =
+      () => {
+
+
+        selectedIds =
+          new Set(
+
+            allPlaces.map(
+              place =>
+                place._id
+            )
+
+          );
+
+
+        render();
+
+        updateWheel();
+
+      };
+
+
+    $('deselectAllBtn').onclick =
+      () => {
+
+
+        selectedIds =
+          new Set();
+
+
+        render();
+
+        updateWheel();
+
+      };
+
+
+    $('updateWheelBtn').onclick =
+      () => {
+
 
         if (
-            typeof window.setupWheelWithPlaces ===
-            'function'
+          !selectedIds.size
         ) {
-            window.setupWheelWithPlaces([]);
+
+          alert(
+            '請至少勾選一個地點才能轉盤！'
+          );
+
+          return;
+
         }
-    }
 
-    if (updateWheelBtn) {
-        updateWheelBtn.addEventListener(
-            'click',
-            () => {
-                if (
-                    selectedPlaceIds.size ===
-                    0
-                ) {
-                    alert(
-                        '請至少勾選一個地點才能轉盤！'
-                    );
 
-                    updateWheelFromSelection();
+        updateWheel();
 
-                    return;
-                }
 
-                updateWheelFromSelection();
+        $('wheelSection')
+          .scrollIntoView({
 
-                const wheelSection =
-                    document.getElementById(
-                        'wheelSection'
-                    );
+            behavior:
+              'smooth'
 
-                if (wheelSection) {
-                    wheelSection.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
-                }
-            }
-        );
-    }
+          });
 
-    if (getLocationBtn) {
-        getLocationBtn.addEventListener(
-            'click',
-            getGeoLocation
-        );
-    }
+      };
 
-    if (searchNearbyBtn) {
-        searchNearbyBtn.addEventListener(
-            'click',
-            searchNearbyPlaces
-        );
-    }
 
-    if (selectAllBtn) {
-        selectAllBtn.addEventListener(
-            'click',
-            () => {
-                selectedPlaceIds =
-                    new Set(
-                        allPlaces.map(
-                            place =>
-                                place._frontendId
-                        )
-                    );
+    prevBtn.onclick =
+      () => {
 
-                renderCurrentPage();
-                updateWheelFromSelection();
-            }
-        );
-    }
 
-    if (deselectAllBtn) {
-        deselectAllBtn.addEventListener(
-            'click',
-            () => {
-                selectedPlaceIds =
-                    new Set();
+        if (
+          currentPage > 1
+        ) {
 
-                renderCurrentPage();
-                updateWheelFromSelection();
-            }
-        );
-    }
+          currentPage--;
 
-    if (prevPageBtn) {
-        prevPageBtn.addEventListener(
-            'click',
-            () => {
-                if (currentPage <= 1) {
-                    return;
-                }
+          render(
+            true
+          );
 
-                currentPage -= 1;
+        }
 
-                renderCurrentPage({
-                    scrollToResults: true
-                });
-            }
-        );
-    }
+      };
 
-    if (nextPageBtn) {
-        nextPageBtn.addEventListener(
-            'click',
-            () => {
-                if (
-                    currentPage >=
-                    getTotalPages()
-                ) {
-                    return;
-                }
 
-                currentPage += 1;
+    nextBtn.onclick =
+      () => {
 
-                renderCurrentPage({
-                    scrollToResults: true
-                });
-            }
-        );
-    }
 
-    if (geocodeAddressBtn) {
-        geocodeAddressBtn.addEventListener(
-            'click',
-            geocodeAddress
-        );
-    }
+        if (
+          currentPage
+          <
+          totalPages()
+        ) {
 
-    if (addressInput) {
-        addressInput.addEventListener(
-            'keydown',
-            event => {
-                if (
-                    event.key ===
-                    'Enter'
-                ) {
-                    geocodeAddress();
-                }
-            }
-        );
-    }
+          currentPage++;
 
-    if (
-        searchRadiusSlider &&
-        radiusValueSpan
-    ) {
-        radiusValueSpan.textContent =
-            searchRadiusSlider.value;
+          render(
+            true
+          );
 
-        searchRadiusSlider.addEventListener(
-            'input',
-            () => {
-                radiusValueSpan.textContent =
-                    searchRadiusSlider.value;
-            }
-        );
-    }
+        }
 
-    let lastWasMobile =
-        window
-            .matchMedia(
-                '(max-width: 768px)'
-            )
-            .matches;
+      };
+
+
+    radiusValue.textContent =
+      radius.value;
+
+
+    radius.oninput =
+      () => {
+
+        radiusValue.textContent =
+          radius.value;
+
+      };
+
+
+    /*
+     * 如果使用者旋轉手機
+     * 或 resize browser，
+     * 手機 / 桌機模式切換時
+     * 回到第一頁。
+     */
+
+    let mobile =
+      matchMedia(
+        '(max-width: 768px)'
+      ).matches;
+
 
     window.addEventListener(
-        'resize',
-        () => {
-            const isMobile =
-                window
-                    .matchMedia(
-                        '(max-width: 768px)'
-                    )
-                    .matches;
+      'resize',
+      () => {
 
-            if (
-                isMobile !==
-                lastWasMobile
-            ) {
-                lastWasMobile =
-                    isMobile;
 
-                currentPage = 1;
+        const nowMobile =
+          matchMedia(
+            '(max-width: 768px)'
+          ).matches;
 
-                renderCurrentPage();
-            }
-        }
-    );
-
-    getGeoLocation();
-
-    function getGeoLocation() {
-        displayMessage(
-            '正在獲取您的位置...',
-            'info'
-        );
-
-        if (!navigator.geolocation) {
-            displayMessage(
-                '您的瀏覽器不支援地理位置功能，請手動輸入地址。',
-                'error'
-            );
-
-            if (
-                currentLocationDisplay
-            ) {
-                currentLocationDisplay.textContent =
-                    '瀏覽器不支援地理位置。';
-            }
-
-            if (
-                manualLocationInputDiv
-            ) {
-                manualLocationInputDiv.classList.remove(
-                    'hidden-section'
-                );
-            }
-
-            if (
-                placeTypeSelection
-            ) {
-                placeTypeSelection.classList.add(
-                    'hidden-section'
-                );
-            }
-
-            resetResults();
-
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            position => {
-                currentCoords = {
-                    latitude:
-                        position.coords.latitude,
-
-                    longitude:
-                        position.coords.longitude
-                };
-
-                reverseGeocode(
-                    currentCoords.latitude,
-                    currentCoords.longitude
-                );
-
-                if (
-                    manualLocationInputDiv
-                ) {
-                    manualLocationInputDiv.classList.add(
-                        'hidden-section'
-                    );
-                }
-            },
-
-            error => {
-                console.error(
-                    '獲取地理位置失敗:',
-                    error
-                );
-
-                displayMessage(
-                    '無法獲取您的位置，請手動輸入地址。',
-                    'error'
-                );
-
-                if (
-                    currentLocationDisplay
-                ) {
-                    currentLocationDisplay.textContent =
-                        '無法獲取位置。';
-                }
-
-                if (
-                    manualLocationInputDiv
-                ) {
-                    manualLocationInputDiv.classList.remove(
-                        'hidden-section'
-                    );
-                }
-
-                if (
-                    placeTypeSelection
-                ) {
-                    placeTypeSelection.classList.add(
-                        'hidden-section'
-                    );
-                }
-
-                resetResults();
-            },
-
-            {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 0
-            }
-        );
-    }
-
-    async function reverseGeocode(
-        lat,
-        lng
-    ) {
-        try {
-            const response =
-                await fetch(
-                    `${BACKEND_BASE_URL}/reverse_geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`
-                );
-
-            const data =
-                await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    data.error ||
-                    '反向地理編碼失敗'
-                );
-            }
-
-            currentAddress =
-                data.address ||
-                '未知地址';
-
-            if (
-                currentLocationDisplay
-            ) {
-                currentLocationDisplay.textContent =
-                    `當前位置: ${currentAddress}`;
-            }
-
-            displayMessage(
-                data.address
-                    ? '位置已更新。'
-                    : '無法解析當前位置地址。',
-
-                data.address
-                    ? 'success'
-                    : 'warning'
-            );
-
-            if (
-                placeTypeSelection
-            ) {
-                placeTypeSelection.classList.remove(
-                    'hidden-section'
-                );
-            }
-
-        } catch (error) {
-            console.error(
-                '反向地理編碼失敗:',
-                error
-            );
-
-            displayMessage(
-                '反向地理編碼失敗。',
-                'error'
-            );
-
-            currentAddress =
-                '獲取地址失敗';
-
-            if (
-                currentLocationDisplay
-            ) {
-                currentLocationDisplay.textContent =
-                    '當前位置: 獲取地址失敗';
-            }
-
-            if (
-                placeTypeSelection
-            ) {
-                placeTypeSelection.classList.remove(
-                    'hidden-section'
-                );
-            }
-        }
-    }
-
-    async function geocodeAddress() {
-        if (!addressInput) return;
-
-        const address =
-            addressInput.value.trim();
-
-        if (!address) {
-            displayMessage(
-                '請輸入有效的地址。',
-                'error'
-            );
-
-            return;
-        }
-
-        displayMessage(
-            '正在轉換地址...',
-            'info'
-        );
-
-        try {
-            const response =
-                await fetch(
-                    `${BACKEND_BASE_URL}/geocode_address`,
-                    {
-                        method: 'POST',
-
-                        headers: {
-                            'Content-Type':
-                                'application/json'
-                        },
-
-                        body: JSON.stringify({
-                            address
-                        })
-                    }
-                );
-
-            const data =
-                await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    data.error ||
-                    '地址轉換失敗'
-                );
-            }
-
-            if (
-                data.lat ===
-                undefined ||
-                data.lng ===
-                undefined
-            ) {
-                throw new Error(
-                    '回傳資料沒有座標'
-                );
-            }
-
-            currentCoords = {
-                latitude:
-                    data.lat,
-
-                longitude:
-                    data.lng
-            };
-
-            currentAddress =
-                data.formatted_address ||
-                address;
-
-            if (
-                currentLocationDisplay
-            ) {
-                currentLocationDisplay.textContent =
-                    `當前位置: ${currentAddress}`;
-            }
-
-            displayMessage(
-                '地址轉換成功！',
-                'success'
-            );
-
-            if (
-                placeTypeSelection
-            ) {
-                placeTypeSelection.classList.remove(
-                    'hidden-section'
-                );
-            }
-
-            if (
-                manualLocationInputDiv
-            ) {
-                manualLocationInputDiv.classList.add(
-                    'hidden-section'
-                );
-            }
-
-            resetResults();
-
-        } catch (error) {
-            console.error(
-                '地址轉換失敗:',
-                error
-            );
-
-            displayMessage(
-                `地址轉換失敗：${error.message}`,
-                'error'
-            );
-
-            currentCoords = null;
-            currentAddress = null;
-
-            if (
-                placeTypeSelection
-            ) {
-                placeTypeSelection.classList.add(
-                    'hidden-section'
-                );
-            }
-
-            resetResults();
-        }
-    }
-
-    async function searchNearbyPlaces() {
-        if (!currentCoords) {
-            displayMessage(
-                '請先獲取或輸入您的位置。',
-                'warning'
-            );
-
-            return;
-        }
 
         if (
-            !searchTypeSelect ||
-            !searchRadiusSlider ||
-            !placesListDiv
+          nowMobile !==
+          mobile
         ) {
-            displayMessage(
-                '頁面元件載入失敗，請重新整理後再試。',
-                'error'
-            );
 
-            return;
+          mobile =
+            nowMobile;
+
+
+          currentPage =
+            1;
+
+
+          render();
+
         }
 
-        const type =
-            searchTypeSelect.value;
+      }
+    );
 
-        const radius =
-            parseInt(
-                searchRadiusSlider.value,
-                10
-            );
 
-        const typeLabel =
-            searchTypeSelect.options[
-                searchTypeSelect.selectedIndex
-            ].text;
+    $('getLocationBtn').onclick =
+      getLocation;
 
-        displayMessage(
-            `正在搜尋附近的 ${typeLabel}...`,
-            'info'
+
+    $('geocodeAddressBtn').onclick =
+      geocodeAddress;
+
+
+    $('searchNearbyBtn').onclick =
+      searchNearby;
+
+
+    addressInput.onkeydown =
+      event => {
+
+
+        if (
+          event.key ===
+          'Enter'
+        ) {
+
+          geocodeAddress();
+
+        }
+
+      };
+
+
+    async function reverseGeocode(
+      lat,
+      lng
+    ) {
+
+      try {
+
+
+        const response =
+          await fetch(
+
+            `${BACKEND_BASE_URL}/reverse_geocode`
+
+            +
+
+            `?lat=${encodeURIComponent(lat)}`
+
+            +
+
+            `&lng=${encodeURIComponent(lng)}`
+
+          );
+
+
+        const data =
+          await response.json();
+
+
+        if (
+          !response.ok
+        ) {
+
+          throw new Error(
+
+            data.error
+
+            ||
+
+            '地址解析失敗'
+
+          );
+
+        }
+
+
+        locationText.textContent =
+          `當前位置: ${data.address}`;
+
+
+        show(
+          '位置已更新。',
+          'success'
         );
 
-        resetResults();
 
-        try {
-            const response =
-                await fetch(
-                    `${BACKEND_BASE_URL}/nearby_search`,
-                    {
-                        method: 'POST',
+        typeSection
+          .classList
+          .remove(
+            'hidden-section'
+          );
 
-                        headers: {
-                            'Content-Type':
-                                'application/json'
-                        },
 
-                        body: JSON.stringify({
-                            lat:
-                                currentCoords.latitude,
+      } catch (
+        error
+      ) {
 
-                            lng:
-                                currentCoords.longitude,
 
-                            type,
+        /*
+         * Geocoding 額度即使滿了，
+         * GPS 座標還是已經取得。
+         *
+         * 所以不要阻止 Nearby Search。
+         */
 
-                            radius
-                        })
-                    }
-                );
+        locationText.textContent =
+          '已取得座標，但地址名稱暫時無法取得。';
 
-            const data =
-                await response.json();
 
-            if (!response.ok) {
-                if (
-                    response.status ===
-                    429
-                ) {
-                    throw new Error(
-                        '搜尋太頻繁，請稍後再試'
-                    );
-                }
+        show(
+          error.message,
+          'warning'
+        );
 
-                throw new Error(
-                    data.error ||
-                    '搜尋失敗'
-                );
-            }
 
-            if (
-                !data.places ||
-                data.places.length ===
-                0
-            ) {
-                displayMessage(
-                    '沒有找到符合條件的地點。',
-                    'warning'
-                );
+        if (
+          currentCoords
+        ) {
 
-                return;
-            }
-
-            allPlaces =
-                data.places;
-
-            rebuildPlaceMaps(
-                allPlaces
+          typeSection
+            .classList
+            .remove(
+              'hidden-section'
             );
 
-            selectedPlaceIds =
-                new Set(
-                    allPlaces.map(
-                        place =>
-                            place._frontendId
-                    )
-                );
-
-            currentPage = 1;
-
-            renderCurrentPage();
-
-            updateWheelFromSelection();
-
-            if (
-                placesActionsDiv
-            ) {
-                placesActionsDiv.classList.remove(
-                    'hidden-section'
-                );
-            }
-
-            displayMessage(
-                `找到 ${allPlaces.length} 個結果。`,
-                'success'
-            );
-
-        } catch (error) {
-            console.error(
-                '搜尋失敗:',
-                error
-            );
-
-            displayMessage(
-                `搜尋地點失敗：${error.message}`,
-                'error'
-            );
-
-            resetResults();
         }
+
+      }
+
     }
-});
+
+
+    function getLocation() {
+
+
+      show(
+        '正在獲取您的位置...',
+        'info'
+      );
+
+
+      if (
+        !navigator.geolocation
+      ) {
+
+
+        show(
+          '瀏覽器不支援定位，請手動輸入地址。',
+          'error'
+        );
+
+
+        manualBox
+          .classList
+          .remove(
+            'hidden-section'
+          );
+
+
+        return;
+
+      }
+
+
+      navigator.geolocation
+        .getCurrentPosition(
+
+
+          position => {
+
+
+            currentCoords = {
+
+              latitude:
+                position
+                  .coords
+                  .latitude,
+
+              longitude:
+                position
+                  .coords
+                  .longitude
+
+            };
+
+
+            manualBox
+              .classList
+              .add(
+                'hidden-section'
+              );
+
+
+            reverseGeocode(
+
+              currentCoords.latitude,
+
+              currentCoords.longitude
+
+            );
+
+          },
+
+
+          () => {
+
+
+            currentCoords =
+              null;
+
+
+            locationText.textContent =
+              '無法獲取位置。';
+
+
+            manualBox
+              .classList
+              .remove(
+                'hidden-section'
+              );
+
+
+            typeSection
+              .classList
+              .add(
+                'hidden-section'
+              );
+
+
+            show(
+              '無法獲取位置，請手動輸入地址。',
+              'error'
+            );
+
+
+            reset();
+
+          },
+
+
+          {
+
+            enableHighAccuracy:
+              true,
+
+            timeout:
+              10000,
+
+            maximumAge:
+              0
+
+          }
+
+        );
+
+    }
+
+
+    async function geocodeAddress() {
+
+
+      const address =
+        addressInput
+          .value
+          .trim();
+
+
+      if (
+        !address
+      ) {
+
+        show(
+          '請輸入地址。',
+          'error'
+        );
+
+        return;
+
+      }
+
+
+      show(
+        '正在轉換地址...',
+        'info'
+      );
+
+
+      try {
+
+
+        const response =
+          await fetch(
+
+            `${BACKEND_BASE_URL}/geocode_address`,
+
+            {
+
+              method:
+                'POST',
+
+              headers: {
+
+                'Content-Type':
+                  'application/json'
+
+              },
+
+              body:
+                JSON.stringify({
+
+                  address:
+                    address
+
+                })
+
+            }
+
+          );
+
+
+        const data =
+          await response.json();
+
+
+        if (
+          !response.ok
+        ) {
+
+          throw new Error(
+
+            data.error
+
+            ||
+
+            '地址轉換失敗'
+
+          );
+
+        }
+
+
+        currentCoords = {
+
+          latitude:
+            data.lat,
+
+          longitude:
+            data.lng
+
+        };
+
+
+        locationText.textContent =
+
+          `當前位置: `
+
+          +
+
+          (
+            data.formatted_address
+
+            ||
+
+            address
+          );
+
+
+        manualBox
+          .classList
+          .add(
+            'hidden-section'
+          );
+
+
+        typeSection
+          .classList
+          .remove(
+            'hidden-section'
+          );
+
+
+        show(
+          '地址轉換成功！',
+          'success'
+        );
+
+
+        reset();
+
+
+      } catch (
+        error
+      ) {
+
+
+        show(
+          error.message,
+          'error'
+        );
+
+      }
+
+    }
+
+
+    async function searchNearby() {
+
+
+      if (
+        !currentCoords
+      ) {
+
+        show(
+          '請先取得位置。',
+          'warning'
+        );
+
+        return;
+
+      }
+
+
+      const type =
+        searchType.value;
+
+
+      const meters =
+        parseInt(
+          radius.value,
+          10
+        );
+
+
+      const label =
+        searchType
+          .options[
+            searchType
+              .selectedIndex
+          ]
+          .text;
+
+
+      show(
+        `正在搜尋附近的 ${label}...`,
+        'info'
+      );
+
+
+      reset();
+
+
+      try {
+
+
+        const response =
+          await fetch(
+
+            `${BACKEND_BASE_URL}/nearby_search`,
+
+            {
+
+              method:
+                'POST',
+
+              headers: {
+
+                'Content-Type':
+                  'application/json'
+
+              },
+
+              body:
+                JSON.stringify({
+
+                  lat:
+                    currentCoords
+                      .latitude,
+
+                  lng:
+                    currentCoords
+                      .longitude,
+
+                  type:
+                    type,
+
+                  radius:
+                    meters
+
+                })
+
+            }
+
+          );
+
+
+        const data =
+          await response.json();
+
+
+        if (
+          !response.ok
+        ) {
+
+          throw new Error(
+
+            data.error
+
+            ||
+
+            '搜尋失敗'
+
+          );
+
+        }
+
+
+        if (
+          !data.places
+          ?.
+          length
+        ) {
+
+          show(
+            '沒有找到符合條件的地點。',
+            'warning'
+          );
+
+          return;
+
+        }
+
+
+        allPlaces =
+          data.places;
+
+
+        preparePlaces();
+
+
+        /*
+         * 搜尋後預設全部勾選。
+         *
+         * 即使店家跨不同分頁，
+         * selectedIds 仍然完整保存。
+         */
+
+        selectedIds =
+          new Set(
+
+            allPlaces.map(
+              place =>
+                place._id
+            )
+
+          );
+
+
+        currentPage =
+          1;
+
+
+        render();
+
+
+        updateWheel();
+
+
+        actions
+          .classList
+          .remove(
+            'hidden-section'
+          );
+
+
+        show(
+          `找到 ${allPlaces.length} 個結果。`,
+          'success'
+        );
+
+
+      } catch (
+        error
+      ) {
+
+
+        reset();
+
+
+        show(
+          error.message,
+          'error'
+        );
+
+      }
+
+    }
+
+
+    getLocation();
+
+  }
+);
