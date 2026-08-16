@@ -54,11 +54,12 @@ GOOGLE_RESULTS_PER_REQUEST = 20
 SEARCH_POINT_OFFSET_RATIO = 0.45
 SAMPLE_RADIUS_RATIO = 0.80
 
-# 為了避免照片費用跟著 60 筆結果一起放大，
-# 每次搜尋最多只有前 12 個 Google 結果顯示 Google Places 照片，
-# 其餘使用 placeholder。
+# 前端採分頁渲染：手機每頁 5 家、桌機每頁 10 家。
+# 因此後端可安全產生最多 60 家的照片 proxy URL；
+# 實際 Photo API 只會在該頁卡片被渲染時載入。
+# 仍可在 Render Environment 用 MAX_GOOGLE_PHOTOS_PER_SEARCH 調低上限。
 MAX_GOOGLE_PHOTOS_PER_SEARCH = int(
-    os.getenv("MAX_GOOGLE_PHOTOS_PER_SEARCH", "12")
+    os.getenv("MAX_GOOGLE_PHOTOS_PER_SEARCH", "60")
 )
 
 # -------------------------------
