@@ -1,12 +1,12 @@
 import logging
 import math
 import os
+from urllib.parse import quote_plus
 
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
-from urllib.parse import quote_plus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,7 +33,20 @@ GOOGLE_PLACES_NEARBY_SEARCH_NEW_URL = (
 OVERPASS_API_BASE_URL = "https://overpass-api.de/api/interpreter"
 
 REQUEST_TIMEOUT = 15
-MAX_RESULTS = 20
+
+# 前端最多顯示多少結果。
+MAX_RESULTS = 60
+
+# Google Nearby Search 單次最多 20 筆。
+GOOGLE_RESULTS_PER_REQUEST = 20
+
+# 多點搜尋：中心 + 北 + 南 + 東 + 西，共 5 次 Google Nearby Search。
+SEARCH_POINT_OFFSET_RATIO = 0.45
+
+# 每個採樣點的搜尋半徑。
+# 使用原始半徑的 80%，最後仍會依「使用者原始中心 + 原始半徑」做一次過濾，
+# 因此不會把原本搜尋圈外的地點留在結果裡。
+SAMPLE_RADIUS_RATIO = 0.80
 
 
 @app.route('/')
@@ -148,11 +161,12 @@ def nearby_search():
     except (TypeError, ValueError):
         return jsonify({"error": "Invalid lat, lng, or radius"}), 400
 
+    # 配合目前前端 slider：100 ～ 10000 公尺。
     radius = max(100, min(radius, 10000))
 
-    google_places = search_google_places(
-        lat=lat,
-        lng=lng,
+    google_places = search_google_places_multi_point(
+        origin_lat=lat,
+        origin_lng=lng,
         place_type=place_type,
         radius=radius
     )
@@ -164,6 +178,7 @@ def nearby_search():
         radius=radius
     )
 
+    # Google 優先，再用 OSM 補資料。
     final_unique_places = {}
 
     for place in google_places:
@@ -171,11 +186,23 @@ def nearby_search():
 
     for place in osm_places:
         unique_key = make_unique_key(place)
+
         if unique_key not in final_unique_places:
             final_unique_places[unique_key] = place
 
     final_places_list = list(final_unique_places.values())
 
+    # 再次保證所有結果都在使用者原本指定的搜尋半徑內。
+    final_places_list = [
+        place
+        for place in final_places_list
+        if (
+            place.get('distance') is not None
+            and place['distance'] <= radius
+        )
+    ]
+
+    # 有 Google 評分的優先，其次評分高，再來距離近。
     final_places_list.sort(
         key=lambda place: (
             place.get('rating') is not None,
@@ -188,10 +215,120 @@ def nearby_search():
 
     final_places_list = final_places_list[:MAX_RESULTS]
 
-    return jsonify({"places": final_places_list})
+    logging.info(
+        "附近搜尋完成：Google=%d, OSM=%d, 合併後=%d",
+        len(google_places),
+        len(osm_places),
+        len(final_places_list)
+    )
+
+    return jsonify({
+        "places": final_places_list,
+        "meta": {
+            "google_count": len(google_places),
+            "osm_count": len(osm_places),
+            "returned_count": len(final_places_list),
+            "google_requests": 5,
+            "radius": radius
+        }
+    })
 
 
-def search_google_places(lat, lng, place_type, radius):
+def search_google_places_multi_point(
+    origin_lat,
+    origin_lng,
+    place_type,
+    radius
+):
+    """
+    對 5 個採樣點各做一次 Google Nearby Search：
+    中心、北、南、東、西。
+
+    中心使用 POPULARITY，保留熱門店家；
+    外圍 4 點使用 DISTANCE，提高區域覆蓋率。
+
+    Google 回傳後再依：
+    1. Place ID 去重
+    2. 原始中心 / 原始半徑過濾
+    """
+    search_points = build_search_points(
+        origin_lat,
+        origin_lng,
+        radius
+    )
+
+    sample_radius = max(
+        100,
+        int(radius * SAMPLE_RADIUS_RATIO)
+    )
+
+    # 小半徑時不要讓 sample radius 比原始半徑大。
+    sample_radius = min(sample_radius, radius)
+
+    unique_google_places = {}
+
+    for index, (sample_lat, sample_lng) in enumerate(search_points):
+        rank_preference = (
+            "POPULARITY"
+            if index == 0
+            else "DISTANCE"
+        )
+
+        places = search_google_places_once(
+            origin_lat=origin_lat,
+            origin_lng=origin_lng,
+            sample_lat=sample_lat,
+            sample_lng=sample_lng,
+            place_type=place_type,
+            sample_radius=sample_radius,
+            rank_preference=rank_preference
+        )
+
+        for place in places:
+            # 超出使用者原始搜尋圈的地點不要。
+            if place['distance'] > radius:
+                continue
+
+            place_id = place.get('id')
+
+            if place_id:
+                dedupe_key = f"google:{place_id}"
+            else:
+                dedupe_key = (
+                    f"fallback:"
+                    f"{place.get('name', '').lower().strip()}:"
+                    f"{round(place['latitude'], 5)}:"
+                    f"{round(place['longitude'], 5)}"
+                )
+
+            existing = unique_google_places.get(dedupe_key)
+
+            # 同一家店若重複搜到，保留距離較近於原始中心的那份。
+            if (
+                existing is None
+                or place['distance'] < existing['distance']
+            ):
+                unique_google_places[dedupe_key] = place
+
+    google_places = list(unique_google_places.values())
+
+    logging.info(
+        "Google 5 點搜尋：原始候選去重後 %d 筆",
+        len(google_places)
+    )
+
+    return google_places
+
+
+def search_google_places_once(
+    origin_lat,
+    origin_lng,
+    sample_lat,
+    sample_lng,
+    place_type,
+    sample_radius,
+    rank_preference
+):
     google_places = []
 
     headers = {
@@ -210,13 +347,15 @@ def search_google_places(lat, lng, place_type, radius):
 
     payload = {
         "includedTypes": [place_type],
+        "maxResultCount": GOOGLE_RESULTS_PER_REQUEST,
+        "rankPreference": rank_preference,
         "locationRestriction": {
             "circle": {
                 "center": {
-                    "latitude": lat,
-                    "longitude": lng
+                    "latitude": sample_lat,
+                    "longitude": sample_lng
                 },
-                "radius": radius
+                "radius": sample_radius
             }
         },
         "languageCode": "zh-TW"
@@ -236,20 +375,31 @@ def search_google_places(lat, lng, place_type, radius):
             location = place.get('location') or {}
             place_lat = location.get('latitude')
             place_lng = location.get('longitude')
-            display_name = (place.get('displayName') or {}).get('text')
+
+            display_name = (
+                place.get('displayName') or {}
+            ).get('text')
 
             if (
-                not display_name or
-                place_lat is None or
-                place_lng is None
+                not display_name
+                or place_lat is None
+                or place_lng is None
             ):
                 continue
+
+            distance = calculate_distance(
+                origin_lat,
+                origin_lng,
+                place_lat,
+                place_lng
+            )
 
             photo_url = "/static/placeholder.jpg"
             photos = place.get("photos") or []
 
             if photos:
                 photo_ref = photos[0].get("name")
+
                 if photo_ref:
                     photo_url = (
                         f"https://places.googleapis.com/v1/"
@@ -258,6 +408,18 @@ def search_google_places(lat, lng, place_type, radius):
                     )
 
             place_id = place.get('id')
+
+            if place_id:
+                map_url = (
+                    "https://www.google.com/maps/search/?api=1"
+                    f"&query={quote_plus(display_name)}"
+                    f"&query_place_id={quote_plus(place_id)}"
+                )
+            else:
+                map_url = (
+                    "https://www.google.com/maps/search/?api=1"
+                    f"&query={quote_plus(f'{place_lat},{place_lng}')}"
+                )
 
             google_places.append({
                 "id": place_id,
@@ -269,32 +431,61 @@ def search_google_places(lat, lng, place_type, radius):
                 "rating": place.get('rating'),
                 "user_ratings_total": place.get('userRatingCount'),
                 "source": "Google",
-                "distance": calculate_distance(
-                    lat,
-                    lng,
-                    place_lat,
-                    place_lng
-                ),
+                "distance": distance,
                 "photo_url": photo_url,
-                "map_url": (
-                    f"https://www.google.com/maps/search/?api=1"
-                    f"&query={quote_plus(display_name)}"
-                    f"&query_place_id={quote_plus(place_id)}"
-                ) if place_id else (
-                    f"https://www.google.com/maps/search/?api=1"
-                    f"&query={quote_plus(f'{place_lat},{place_lng}')}"
-                ),
+                "map_url": map_url,
                 "food_search_url": (
-                    f"https://www.google.com/search?q={display_name}"
+                    "https://www.google.com/search?q="
+                    f"{quote_plus(display_name)}"
                 )
             })
 
     except requests.exceptions.RequestException as e:
-        logging.error("Google Places API 搜尋失敗: %s", e)
+        logging.error(
+            "Google Places API 搜尋失敗 "
+            "(lat=%s, lng=%s, rank=%s): %s",
+            sample_lat,
+            sample_lng,
+            rank_preference,
+            e
+        )
     except (KeyError, TypeError, ValueError) as e:
-        logging.error("Google Places API 返回資料結構錯誤: %s", e)
+        logging.error(
+            "Google Places API 返回資料結構錯誤: %s",
+            e
+        )
 
     return google_places
+
+
+def build_search_points(lat, lng, radius):
+    """
+    建立 5 個採樣點：
+    center / north / south / east / west
+
+    外圍採樣點距中心約為 radius * 0.45。
+    """
+    offset_meters = radius * SEARCH_POINT_OFFSET_RATIO
+
+    # 緯度約每度 111,320 公尺。
+    lat_delta = offset_meters / 111320.0
+
+    # 經度每度公尺數會隨緯度改變。
+    cos_lat = math.cos(math.radians(lat))
+    cos_lat = max(abs(cos_lat), 0.01)
+
+    lng_delta = (
+        offset_meters
+        / (111320.0 * cos_lat)
+    )
+
+    return [
+        (lat, lng),
+        (lat + lat_delta, lng),
+        (lat - lat_delta, lng),
+        (lat, lng + lng_delta),
+        (lat, lng - lng_delta)
+    ]
 
 
 def search_osm_places(lat, lng, place_type, radius):
@@ -325,6 +516,7 @@ def search_osm_places(lat, lng, place_type, radius):
     }
 
     osm_tag = osm_tags_map.get(place_type)
+
     if not osm_tag:
         return osm_places
 
@@ -359,6 +551,7 @@ def search_osm_places(lat, lng, place_type, radius):
 
             if element_lat is None:
                 element_lat = center.get('lat')
+
             if element_lng is None:
                 element_lng = center.get('lon')
 
@@ -368,8 +561,11 @@ def search_osm_places(lat, lng, place_type, radius):
             name = tags.get('name', 'N/A')
 
             if (
-                name == 'N/A' and
-                place_type not in ["park", "tourist_attraction"]
+                name == 'N/A'
+                and place_type not in [
+                    "park",
+                    "tourist_attraction"
+                ]
             ):
                 continue
 
@@ -400,14 +596,21 @@ def search_osm_places(lat, lng, place_type, radius):
                     "&zoom=18"
                 ),
                 "food_search_url": (
-                    f"https://www.google.com/search?q={name}"
+                    "https://www.google.com/search?q="
+                    f"{quote_plus(name)}"
                 )
             })
 
     except requests.exceptions.RequestException as e:
-        logging.error("OSM Overpass API 搜尋失敗: %s", e)
+        logging.error(
+            "OSM Overpass API 搜尋失敗: %s",
+            e
+        )
     except (KeyError, TypeError, ValueError) as e:
-        logging.error("OSM 資料處理失敗: %s", e)
+        logging.error(
+            "OSM 資料處理失敗: %s",
+            e
+        )
 
     return osm_places
 
@@ -440,11 +643,24 @@ def build_osm_address(tags):
 
 
 def make_unique_key(place):
-    name = (place.get('name') or '').lower().strip()
+    # Google Places 優先使用 Place ID 去重。
+    if (
+        place.get('source') == 'Google'
+        and place.get('id')
+    ):
+        return (
+            'google',
+            place['id']
+        )
+
+    name = (
+        place.get('name') or ''
+    ).lower().strip()
+
     address = (
-        place.get('formatted_address') or
-        place.get('vicinity') or
-        ''
+        place.get('formatted_address')
+        or place.get('vicinity')
+        or ''
     ).lower().strip()
 
     lat = float(place.get('latitude'))
@@ -459,18 +675,24 @@ def make_unique_key(place):
 
 
 def calculate_distance(lat1, lon1, lat2, lon2):
-    radius = 6371000
+    earth_radius = 6371000
 
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
-    delta_phi = math.radians(lat2 - lat1)
-    delta_lambda = math.radians(lon2 - lon1)
+
+    delta_phi = math.radians(
+        lat2 - lat1
+    )
+
+    delta_lambda = math.radians(
+        lon2 - lon1
+    )
 
     a = (
-        math.sin(delta_phi / 2) ** 2 +
-        math.cos(phi1) *
-        math.cos(phi2) *
-        math.sin(delta_lambda / 2) ** 2
+        math.sin(delta_phi / 2) ** 2
+        + math.cos(phi1)
+        * math.cos(phi2)
+        * math.sin(delta_lambda / 2) ** 2
     )
 
     c = 2 * math.atan2(
@@ -478,7 +700,7 @@ def calculate_distance(lat1, lon1, lat2, lon2):
         math.sqrt(1 - a)
     )
 
-    return radius * c
+    return earth_radius * c
 
 
 if __name__ == '__main__':
