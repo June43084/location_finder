@@ -6,6 +6,7 @@ import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
+from urllib.parse import quote_plus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -276,11 +277,12 @@ def search_google_places(lat, lng, place_type, radius):
                 ),
                 "photo_url": photo_url,
                 "map_url": (
-                    f"https://www.google.com/maps/place/"
-                    f"?q=place_id:{place_id}"
+                    f"https://www.google.com/maps/search/?api=1"
+                    f"&query={quote_plus(display_name)}"
+                    f"&query_place_id={quote_plus(place_id)}"
                 ) if place_id else (
-                    f"https://www.google.com/maps/search/"
-                    f"?api=1&query={place_lat},{place_lng}"
+                    f"https://www.google.com/maps/search/?api=1"
+                    f"&query={quote_plus(f'{place_lat},{place_lng}')}"
                 ),
                 "food_search_url": (
                     f"https://www.google.com/search?q={display_name}"
