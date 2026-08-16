@@ -1,24 +1,16 @@
 const BACKEND_BASE_URL = '';
 
 
-let currentCoords =
-  null;
+let currentCoords = null;
+
+let allPlaces = [];
+
+let selectedIds = new Set();
+
+let currentPage = 1;
 
 
-let allPlaces =
-  [];
-
-
-let selectedIds =
-  new Set();
-
-
-let currentPage =
-  1;
-
-
-window.placeUrlMap =
-  {};
+window.placeUrlMap = {};
 
 
 document.addEventListener(
@@ -55,6 +47,10 @@ document.addEventListener(
 
     const searchType =
       $('searchType');
+
+
+    const openNowOnly =
+      $('openNowOnly');
 
 
     const radius =
@@ -117,13 +113,11 @@ document.addEventListener(
 
 
     /*
-     * 手機：
-     * 5 家 / 頁
+     * 手機每頁 5 家
      *
-     * 電腦：
-     * 10 家 / 頁
+     * 電腦每頁 10 家
      * =
-     * 5 欄 × 2 列
+     * 5 欄 × 2 排
      */
 
     function pageSize() {
@@ -267,24 +261,32 @@ document.addEventListener(
         selectedNames();
 
 
-      window
-        .setupWheelWithPlaces
-        ?.
-        (
+      if (
+        typeof window.setupWheelWithPlaces
+        ===
+        'function'
+      ) {
+
+        window.setupWheelWithPlaces(
           names
         );
 
+      }
 
-      jumpBtn
-        ?.
-        classList
-        .toggle(
+
+      if (
+        jumpBtn
+      ) {
+
+        jumpBtn.classList.toggle(
 
           'hidden-section',
 
           names.length === 0
 
         );
+
+      }
 
     }
 
@@ -336,11 +338,7 @@ document.addEventListener(
 
       summary.textContent =
 
-        `共 ${allPlaces.length} 家，`
-
-        +
-
-        `目前顯示 ${start}–${end} 家，`
+        `共 ${allPlaces.length} 家，目前顯示 ${start}–${end} 家，`
 
         +
 
@@ -533,7 +531,9 @@ document.addEventListener(
               place._id
             );
 
-          } else {
+          }
+
+          else {
 
             selectedIds.delete(
               place._id
@@ -556,14 +556,12 @@ document.addEventListener(
 
 
       /*
-       * 只有目前頁面的卡片
-       * 才會建立 img 元件。
+       * 分頁的重要效果：
        *
-       * 所以：
+       * 只有目前這頁才建立 img。
        *
-       * 手機最多一次載 5 張
-       *
-       * 電腦最多一次載 10 張
+       * 手機最多 5 張
+       * 電腦最多 10 張
        */
 
       const image =
@@ -689,17 +687,24 @@ document.addEventListener(
         +
 
         encodeURIComponent(
+
           place.name
+
           ||
+
           ''
+
         );
 
 
       details.appendChild(
 
         linkRow(
+
           googleSearchUrl,
+
           '🔎 Google 搜尋'
+
         )
 
       );
@@ -857,15 +862,27 @@ document.addEventListener(
         {};
 
 
-      window
-        .setupWheelWithPlaces
-        ?.
-        (
+      if (
+        typeof window.setupWheelWithPlaces
+        ===
+        'function'
+      ) {
+
+        window.setupWheelWithPlaces(
           []
         );
 
+      }
+
     }
 
+
+    /*
+     * 全選
+     *
+     * 是全部搜尋結果，
+     * 不是只選目前頁。
+     */
 
     $('selectAllBtn').onclick =
       () => {
@@ -875,8 +892,10 @@ document.addEventListener(
           new Set(
 
             allPlaces.map(
+
               place =>
                 place._id
+
             )
 
           );
@@ -888,6 +907,10 @@ document.addEventListener(
 
       };
 
+
+    /*
+     * 全不選
+     */
 
     $('deselectAllBtn').onclick =
       () => {
@@ -903,6 +926,10 @@ document.addEventListener(
 
       };
 
+
+    /*
+     * 更新轉盤
+     */
 
     $('updateWheelBtn').onclick =
       () => {
@@ -928,12 +955,19 @@ document.addEventListener(
           .scrollIntoView({
 
             behavior:
-              'smooth'
+              'smooth',
+
+            block:
+              'start'
 
           });
 
       };
 
+
+    /*
+     * 上一頁
+     */
 
     prevBtn.onclick =
       () => {
@@ -943,7 +977,9 @@ document.addEventListener(
           currentPage > 1
         ) {
 
-          currentPage--;
+          currentPage -=
+            1;
+
 
           render(
             true
@@ -953,6 +989,10 @@ document.addEventListener(
 
       };
 
+
+    /*
+     * 下一頁
+     */
 
     nextBtn.onclick =
       () => {
@@ -964,7 +1004,9 @@ document.addEventListener(
           totalPages()
         ) {
 
-          currentPage++;
+          currentPage +=
+            1;
+
 
           render(
             true
@@ -974,6 +1016,10 @@ document.addEventListener(
 
       };
 
+
+    /*
+     * 距離 slider
+     */
 
     radiusValue.textContent =
       radius.value;
@@ -989,10 +1035,7 @@ document.addEventListener(
 
 
     /*
-     * 如果使用者旋轉手機
-     * 或 resize browser，
-     * 手機 / 桌機模式切換時
-     * 回到第一頁。
+     * 手機 ↔ 電腦
      */
 
     let mobile =
@@ -1061,10 +1104,15 @@ document.addEventListener(
       };
 
 
+    /*
+     * GPS 座標 -> 地址名稱
+     */
+
     async function reverseGeocode(
       lat,
       lng
     ) {
+
 
       try {
 
@@ -1123,16 +1171,18 @@ document.addEventListener(
           );
 
 
-      } catch (
+      }
+
+      catch (
         error
       ) {
 
 
         /*
-         * Geocoding 額度即使滿了，
+         * 即使 Geocoding 月額度用完，
          * GPS 座標還是已經取得。
          *
-         * 所以不要阻止 Nearby Search。
+         * 所以仍允許 Nearby Search。
          */
 
         locationText.textContent =
@@ -1161,6 +1211,10 @@ document.addEventListener(
 
     }
 
+
+    /*
+     * GPS 定位
+     */
 
     function getLocation() {
 
@@ -1288,6 +1342,10 @@ document.addEventListener(
     }
 
 
+    /*
+     * 手動輸入地址
+     */
+
     async function geocodeAddress() {
 
 
@@ -1394,6 +1452,7 @@ document.addEventListener(
             ||
 
             address
+
           );
 
 
@@ -1420,7 +1479,9 @@ document.addEventListener(
         reset();
 
 
-      } catch (
+      }
+
+      catch (
         error
       ) {
 
@@ -1434,6 +1495,10 @@ document.addEventListener(
 
     }
 
+
+    /*
+     * 搜尋附近
+     */
 
     async function searchNearby() {
 
@@ -1472,10 +1537,35 @@ document.addEventListener(
           .text;
 
 
-      show(
-        `正在搜尋附近的 ${label}...`,
-        'info'
-      );
+      const onlyOpen =
+        Boolean(
+
+          openNowOnly
+          ?.
+          checked
+
+        );
+
+
+      if (
+        onlyOpen
+      ) {
+
+        show(
+          `正在搜尋目前營業中的 ${label}...`,
+          'info'
+        );
+
+      }
+
+      else {
+
+        show(
+          `正在搜尋附近的 ${label}...`,
+          'info'
+        );
+
+      }
 
 
       reset();
@@ -1516,7 +1606,10 @@ document.addEventListener(
                     type,
 
                   radius:
-                    meters
+                    meters,
+
+                  open_now:
+                    onlyOpen
 
                 })
 
@@ -1552,10 +1645,27 @@ document.addEventListener(
           length
         ) {
 
-          show(
-            '沒有找到符合條件的地點。',
-            'warning'
-          );
+
+          if (
+            onlyOpen
+          ) {
+
+            show(
+              '目前沒有找到可確認正在營業的地點。',
+              'warning'
+            );
+
+          }
+
+          else {
+
+            show(
+              '沒有找到符合條件的地點。',
+              'warning'
+            );
+
+          }
+
 
           return;
 
@@ -1570,18 +1680,19 @@ document.addEventListener(
 
 
         /*
-         * 搜尋後預設全部勾選。
+         * 預設全部勾選
          *
-         * 即使店家跨不同分頁，
-         * selectedIds 仍然完整保存。
+         * 即使跨頁也會保存
          */
 
         selectedIds =
           new Set(
 
             allPlaces.map(
+
               place =>
                 place._id
+
             )
 
           );
@@ -1604,13 +1715,36 @@ document.addEventListener(
           );
 
 
-        show(
-          `找到 ${allPlaces.length} 個結果。`,
-          'success'
-        );
+        if (
+          onlyOpen
+        ) {
+
+          show(
+
+            `找到 ${allPlaces.length} 個目前營業中的結果。`,
+
+            'success'
+
+          );
+
+        }
+
+        else {
+
+          show(
+
+            `找到 ${allPlaces.length} 個結果。`,
+
+            'success'
+
+          );
+
+        }
 
 
-      } catch (
+      }
+
+      catch (
         error
       ) {
 
@@ -1628,7 +1762,14 @@ document.addEventListener(
     }
 
 
+    /*
+     * 頁面第一次打開
+     *
+     * 自動定位
+     */
+
     getLocation();
+
 
   }
 );
